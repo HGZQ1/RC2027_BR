@@ -276,10 +276,39 @@ void test_per_goal_tolerance()
   check(normal.xy_tolerance() == cfg.xy_tolerance, "不给门限时回到节点参数");
 }
 
+void test_guarded_final_approach()
+{
+  NavConfig cfg;
+  cfg.fine_approach_speed = 0.25;
+  PointNavController nav(cfg);
+  const Pose2D goal{0.30, 0, 0};
+  nav.set_goal(goal, 0, 0.01, 0.017);
+  for (int i = 0; i < 60 && is_active(nav.phase()); ++i) {
+    const auto cmd = nav.update({0, 0, 0}, i * kDt, kDt);
+    check(cmd.vx <= 0.25, "精对齐速度限幅");
+  }
+  check(nav.phase() == NavPhase::Stuck && nav.approach_overrun(), "定位未前进，禁止继续顶塔");
+  nav.set_goal(goal, 10, 0.01, 0.017);
+  nav.update(goal, 10, kDt);
+  check(is_active(nav.phase()), "首次进容差不能立刻放块");
+  nav.update(goal, 10.36, kDt);
+  check(nav.phase() == NavPhase::Arrived, "停稳后确认到位");
+  nav.set_goal(goal, 11, 0.01, 0.017);
+  nav.update(goal, 11, kDt);
+  for (int i = 1; i <= 24; ++i) {
+    nav.update({0.265, 0, 0}, 11 + i * kDt, kDt);
+  }
+  check(is_active(nav.phase()), "ICP 后同点复对允许几厘米的往返调整");
+  nav.update(goal, 12.25, kDt);
+  nav.update(goal, 12.65, kDt);
+  check(nav.phase() == NavPhase::Arrived, "复对仍需停稳确认");
+}
+
 }  // namespace
 
 int main()
 {
+  test_guarded_final_approach();
   test_reaches_far_goal();
   test_accel_limit();
   test_yaw_takes_short_way_across_pi();

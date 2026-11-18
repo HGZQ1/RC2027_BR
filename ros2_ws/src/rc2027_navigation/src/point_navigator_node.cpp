@@ -150,6 +150,7 @@ public:
     cfg.angular_decel = declare_parameter<double>("angular_decel", cfg.angular_decel);
     cfg.max_linear_accel = declare_parameter<double>("max_linear_accel", cfg.max_linear_accel);
     cfg.max_angular_accel = declare_parameter<double>("max_angular_accel", cfg.max_angular_accel);
+    cfg.fine_approach_speed = declare_parameter<double>("fine_approach_speed", 0.0);
     cfg.xy_tolerance = declare_parameter<double>("xy_tolerance", cfg.xy_tolerance);
     cfg.yaw_tolerance = declare_parameter<double>("yaw_tolerance", cfg.yaw_tolerance);
     cfg.goal_timeout = declare_parameter<double>("goal_timeout", cfg.goal_timeout);
@@ -320,8 +321,17 @@ private:
         const Pose2D current{
           tf.transform.translation.x, tf.transform.translation.y,
           yaw_from_quaternion(r.x, r.y, r.z, r.w)};
-        cmd = controller_.update(current, now, dt_);
-        publish_feedback(current);
+        const double age = now - rclcpp::Time(tf.header.stamp).seconds();
+        const bool before_realign = controller_.realigning_same_goal() &&
+          rclcpp::Time(tf.header.stamp).seconds() < controller_.goal_start();
+        if (controller_.guarded_precision_goal() && (before_realign || age < -0.05 || age > 0.25)) {
+          cmd = controller_.hold(now);
+          RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
+            "精对齐等待新定位（TF 年龄 %.2f s）", age);
+        } else {
+          cmd = controller_.update(current, now, dt_);
+          publish_feedback(current);
+        }
       } catch (const tf2::TransformException & exc) {
         RCLCPP_WARN_THROTTLE(
           get_logger(), *get_clock(), 2000, "查不到 %s -> %s，停车等定位: %s",
@@ -368,6 +378,9 @@ private:
   void finish_active_goal()
   {
     const auto phase = controller_.phase();
+    if (phase == NavPhase::Stuck && controller_.approach_overrun()) {
+      RCLCPP_WARN(get_logger(), "精对齐指令行程超过保护上限，停车检查水平定位");
+    }
     RCLCPP_INFO(
       get_logger(), "导航结束：%s（剩余距离 %.3f m）", to_string(phase).c_str(),
       controller_.distance_remaining());

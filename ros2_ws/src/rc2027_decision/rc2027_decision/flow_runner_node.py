@@ -115,6 +115,10 @@ class FlowRunner(TaskExecutor):
         self.points.update(load_points(points_path))
         self.slots = {}             # DETECT 算出来的 @点，Retry / 重新开始时清掉
         self.planner = bool(self.declare_parameter('planner', False).value)
+        strategy = self.declare_parameter('strategy', 'full').value
+        if strategy not in ('full', 'one_l2'):
+            raise RuntimeError(f'未知赛程 {strategy}')
+        self.one_l2 = strategy == 'one_l2'
         self.approaches = None
         if self.planner:
             path = self.declare_parameter('approaches_path', '').value
@@ -295,7 +299,7 @@ class FlowRunner(TaskExecutor):
         at_north = not holding and left_north
         if choice is None:
             choice = plan(towers, goods, self.approaches, climbed=self.climbed,
-                          at_north=at_north)
+                          at_north=at_north, one_l2=self.one_l2)
         self.get_logger().info('规划: ' + choice.line())
         self.decisions.append(choice.line())
         if choice.action in (MUSTIKA, STOP):
@@ -340,7 +344,7 @@ class FlowRunner(TaskExecutor):
         towers, _, _ = self.world_view()
         target = self.planned.spot
         alt = carry_choice(towers, self.held_kind, self.approaches, self.held_n,
-                           avoid=target)
+                           avoid=target, one_l2=self.one_l2)
         if alt is None:
             self.fail(token, f'{target} 途中已封顶，手里的块没有能放的塔')
         else:
@@ -389,13 +393,13 @@ class FlowRunner(TaskExecutor):
             towers[step.region] = Tower(
                 max(int(fresh.ground_layers), remembered.ground, 2), SKY_OTHERS, True)
             new, note = on_arrival(
-                self.planned, towers, goods, self.approaches, climbed=self.climbed)
+                self.planned, towers, goods, self.approaches, climbed=self.climbed, one_l2=self.one_l2)
             self.get_logger().warn(
                 f'跟前 {step.region} 已经有对方天空，不往上放，改去翻')
         # 出视场只说明这一眼不能用来改计划。记账和出发时一样，就照原计划放。
         elif state.top_maybe_clipped:
             new, note = on_arrival(
-                self.planned, towers, goods, self.approaches, climbed=self.climbed)
+                self.planned, towers, goods, self.approaches, climbed=self.climbed, one_l2=self.one_l2)
             if not note:
                 self.get_logger().warn(
                     f'跟前 {step.region} 顶部出视场，这一眼不改计划，照原计划放')
@@ -405,7 +409,7 @@ class FlowRunner(TaskExecutor):
             towers[step.region] = close_look(
                 remembered, state.ground_layers, state.has_sky, False)
             new, note = on_arrival(
-                self.planned, towers, goods, self.approaches, climbed=self.climbed)
+                self.planned, towers, goods, self.approaches, climbed=self.climbed, one_l2=self.one_l2)
             if not note:
                 self.done(token)
                 return
@@ -413,7 +417,7 @@ class FlowRunner(TaskExecutor):
         self.memory[step.region] = towers[step.region]
         kind, nxt = after_changed_look(
             self.planned, new, towers, self.approaches, self.held_n,
-            avoid=step.region if opponent else None)
+            avoid=step.region if opponent else None, one_l2=self.one_l2)
         if kind == 'empty':
             self.plan_and_run(holding=False, choice=nxt)
             return

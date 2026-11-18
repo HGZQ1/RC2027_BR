@@ -59,12 +59,18 @@ PointNavController::PointNavController(const NavConfig & config)
 void PointNavController::set_goal(
   const Pose2D & goal, double now, double xy_tolerance, double yaw_tolerance)
 {
+  realigning_same_goal_ = phase_ == NavPhase::Arrived &&
+    std::hypot(goal.x - goal_.x, goal.y - goal_.y) < 1e-6 &&
+    std::abs(normalize_angle(goal.yaw - goal_.yaw)) < 1e-6;
   goal_ = goal;
   xy_tol_ = xy_tolerance > 0.0 ? xy_tolerance : cfg_.xy_tolerance;
   yaw_tol_ = yaw_tolerance > 0.0 ? yaw_tolerance : cfg_.yaw_tolerance;
   goal_.yaw = normalize_angle(goal.yaw);
   phase_ = NavPhase::Translate;
   goal_start_ = now;
+  command_time_ = now;
+  short_approach_ = false;
+  settled_since_ = -1.0;
   last_progress_ = now;
   pushes_ = 0;
   best_dist_ = std::numeric_limits<double>::infinity();
@@ -95,8 +101,19 @@ Twist2D PointNavController::limit(const Twist2D & target, double dt)
   return out;
 }
 
+void PointNavController::account_approach_motion(double now)
+{
+  if (short_approach_) {
+    travel_remaining_ -= std::hypot(last_cmd_.vx, last_cmd_.vy) *
+      std::max(0.0, now - command_time_);
+  }
+  command_time_ = now;
+}
+
 Twist2D PointNavController::hold(double now)
 {
+  account_approach_motion(now);
+  settled_since_ = -1.0;
   if (is_active(phase_) && now - goal_start_ > cfg_.goal_timeout) {
     return finish(NavPhase::Timeout);
   }
@@ -115,7 +132,22 @@ Twist2D PointNavController::update(const Pose2D & current, double now, double dt
   const double ey = goal_.y - current.y;
   const double dist = std::hypot(ex, ey);
   const double eyaw = normalize_angle(goal_.yaw - current.yaw);
+  if (!std::isfinite(last_dist_)) {
+    // 最后约 30 cm、车头已对准的精确直进。只限制指令行程，不拿它当实际里程。
+    short_approach_ = guarded_precision_goal() &&
+      dist <= 0.36 && std::abs(eyaw) <= 0.09;
+    travel_remaining_ = dist + 0.04;
+    if (realigning_same_goal_) {
+      // ICP 后同点微调，累计指令含来回收敛；首帧残差可能只有几毫米。
+      travel_remaining_ = std::max(0.12, travel_remaining_);
+    }
+    command_time_ = now;
+  }
+  account_approach_motion(now);
   last_dist_ = dist;
+  if (approach_overrun()) {
+    return finish(NavPhase::Stuck);
+  }
 
   if (now - goal_start_ > cfg_.goal_timeout) {
     return finish(NavPhase::Timeout);
@@ -138,8 +170,18 @@ Twist2D PointNavController::update(const Pose2D & current, double now, double dt
   if (phase_ == NavPhase::Rotate && std::abs(eyaw) <= yaw_tol_ &&
     dist <= xy_tol_)
   {
+    if (short_approach_) {
+      if (settled_since_ < 0.0) {
+        settled_since_ = now;
+      }
+      if (now - settled_since_ < 0.35) {
+        last_cmd_ = Twist2D{};
+        return last_cmd_;
+      }
+    }
     return finish(NavPhase::Arrived);
   }
+  settled_since_ = -1.0;
 
   if (phase_ == NavPhase::Rotate && cfg_.rotate_timeout > 0.0 &&
     now - rotate_start_ > cfg_.rotate_timeout)
@@ -164,6 +206,9 @@ Twist2D PointNavController::update(const Pose2D & current, double now, double dt
   if (phase_ == NavPhase::Translate) {
     double speed = speed_profile(dist, cfg_.max_linear_speed, cfg_.kp_linear, cfg_.linear_decel);
     speed = std::max(speed, cfg_.min_linear_speed);
+    if (short_approach_) {
+      speed = std::min(speed, cfg_.fine_approach_speed);
+    }
     vx_w = ex / dist * speed;  // dist > xy_tolerance > 0，不会除零
     vy_w = ey / dist * speed;
   } else {

@@ -438,7 +438,7 @@ class TaskExecutor(Node):
                 self.held_n -= self.planned.count
                 self.held_kind = 'ground'
                 towers, _, _ = self.world_view()
-                alt = carry_choice(towers, 'ground', self.approaches, self.held_n)
+                alt = carry_choice(towers, 'ground', self.approaches, self.held_n, one_l2=self.one_l2)
                 if alt is None:
                     self.fail(self.token, '手里还剩一块地，没有塔能放')
                     return

@@ -34,6 +34,7 @@ def _nodes(context):
         output='screen',
         parameters=[{
             'flows_path': arg('flows'),
+            'strategy': arg('strategy'),
             'points_path': arg('points'),
             'autostart': arg('autostart').lower() == 'true',
             'planner': arg('planner').lower() == 'true',
@@ -68,6 +69,7 @@ def generate_launch_description():
     flows = os.path.join(get_package_share_directory('rc2027_decision'),
                          'config', 'flows', 'route_demo.yaml')
     return LaunchDescription([
+        DeclareLaunchArgument('strategy', default_value='full', choices=['full', 'one_l2']),
         DeclareLaunchArgument('flows', default_value=flows, description='流程文件'),
         DeclareLaunchArgument(
             'points', default_value='/workspace/docs/field_data/sim_red.yaml',

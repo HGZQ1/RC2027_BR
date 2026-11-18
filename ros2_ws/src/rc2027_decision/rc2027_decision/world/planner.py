@@ -184,6 +184,14 @@ def _still_open(towers: Mapping[str, Tower]) -> str:
     return '、'.join(bits) or '还有塔没封顶'
 
 
+def _short_targets(towers):
+    if any(_done(towers.get(n, Tower())) for n in L2_OURS):
+        return ('spot_07',)
+    active = next((n for n in L2_OURS if towers.get(n, Tower()).ground > 0
+                   or towers.get(n, Tower()).sky_owner != SKY_NONE), L2_OURS[0])
+    return ('spot_07', active)
+
+
 def _l2_done(towers: Mapping[str, Tower]) -> bool:
     return all(_done(towers.get(name, Tower(seen=True))) for name in L2_OURS)
 
@@ -325,7 +333,7 @@ def _place_from_goods(towers, goods, at, look):
 
 def choose(towers: Mapping[str, Tower], goods: Goods = Goods(),
            approaches: Optional[Mapping] = None, climbed: bool = False,
-           at_north: bool = False) -> Choice:
+           at_north: bool = False, one_l2: bool = False) -> Choice:
     """下一件。towers 要有 ORDER 里的四个点。"""
     approaches = approaches or {}
 
@@ -367,8 +375,11 @@ def choose(towers: Mapping[str, Tower], goods: Goods = Goods(),
         return Choice(action, name, why_prefix + f'{tower.ground} 层地，{detail}', at(name, 'place'),
                       tower.ground, tower.sky_owner)
 
-    if not _l2_done(towers):
-        for name in OWN_BUILD_ORDER:
+    if one_l2 or not _l2_done(towers):
+        targets = _short_targets(towers) if one_l2 else OWN_BUILD_ORDER
+        if one_l2 and len(targets) == 1 and _done(towers['spot_07']):
+            return Choice(MUSTIKA, None, '南自己和一座 L2 已封顶，去五色石')
+        for name in targets:
             tower = towers.get(name, Tower(seen=True))
             if name in L2_OURS and _unclear(tower):
                 continue  # 看不清时先处理楼下可做的任务。
@@ -380,7 +391,8 @@ def choose(towers: Mapping[str, Tower], goods: Goods = Goods(),
             step = work(name)
             if step is not None:
                 return step
-        pending = '、'.join(n for n in L2_OURS if not _done(towers.get(n, Tower())))
+        pending = '、'.join(n for n in (targets if one_l2 else L2_OURS)
+                           if not _done(towers.get(n, Tower())))
         return Choice(WAIT, None, f'{pending} 尚未封顶，等自己的塔能用的货')
 
     north_shared = towers['spot_02']
@@ -459,15 +471,15 @@ def close_look(remembered: Tower, ground: int, has_sky: bool, clipped: bool) -> 
 
 def carry_choice(towers: Mapping[str, Tower], kind: str,
                  approaches: Optional[Mapping] = None, count: int = 1,
-                 avoid: Optional[str] = None) -> Optional[Choice]:
+                 avoid: Optional[str] = None, one_l2: bool = False) -> Optional[Choice]:
     """手里已经拿着。kind 是 ground / sky / cap（地+天空一摞）。按同样的优先级找一座现在要这块的塔。"""
     approaches = approaches or {}
 
     def at(spot, key):
         return _pose(approaches, spot, key)
 
-    names = OWN_BUILD_ORDER
-    if _l2_done(towers):
+    names = _short_targets(towers) if one_l2 else OWN_BUILD_ORDER
+    if not one_l2 and _l2_done(towers):
         names = ('spot_07', SOUTH_SHARED, 'spot_03', 'spot_02')
         south = towers[SOUTH_SHARED]
         if _almost_done(south) and (
@@ -500,7 +512,7 @@ def carry_choice(towers: Mapping[str, Tower], kind: str,
 
 
 def on_arrival(planned: Choice, towers: Mapping[str, Tower], goods: Goods = Goods(),
-               approaches: Optional[Mapping] = None, climbed: bool = False):
+               approaches: Optional[Mapping] = None, climbed: bool = False, one_l2: bool = False):
     """放 / 翻之前开到跟前再看一眼。和出发时不一样就重选，返回 (新的下一件, 说明)。没变说明是空的。
 
     这一眼看不清（出视场、被挡），而且记账和出发时一样，按出发时的计划放。
@@ -518,7 +530,7 @@ def on_arrival(planned: Choice, towers: Mapping[str, Tower], goods: Goods = Good
         towers[planned.spot] = tower
     if tower.ground == planned.assumed_ground and tower.sky_owner == planned.assumed_sky:
         return planned, ''
-    new = choose(towers, goods, approaches, climbed=climbed)
+    new = choose(towers, goods, approaches, climbed=climbed, one_l2=one_l2)
     note = (f'开到 {planned.spot} 跟前：出发时 {planned.assumed_ground} 层 / {planned.assumed_sky}，'
             f'现在 {tower.ground} 层 / {tower.sky_owner}，改做 {new.line()}')
     return new, note
@@ -526,7 +538,7 @@ def on_arrival(planned: Choice, towers: Mapping[str, Tower], goods: Goods = Good
 
 def after_changed_look(planned: Choice, new: Choice, towers: Mapping[str, Tower],
                        approaches: Optional[Mapping] = None, held_n: int = 0,
-                       avoid: Optional[str] = None):
+                       avoid: Optional[str] = None, one_l2: bool = False):
     """跟前这一眼改了计划之后怎么走。返回 (怎么走, 下一件)。
 
     翻转的检查在拿块之前，held_n 是 0。空手就执行新计划。
@@ -548,7 +560,7 @@ def after_changed_look(planned: Choice, new: Choice, towers: Mapping[str, Tower]
         or (held == 'cap' and new.action == PLACE_SKY and new.count == 2))
     if same:
         return 'same', new
-    alt = carry_choice(towers, held, approaches, n, avoid=avoid)
+    alt = carry_choice(towers, held, approaches, n, avoid=avoid, one_l2=one_l2)
     if alt is None:
         return 'stuck', None
     return 'carry', alt

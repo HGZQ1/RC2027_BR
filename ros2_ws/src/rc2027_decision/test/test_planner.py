@@ -1070,3 +1070,16 @@ def test_near_double_ground_can_top_up_a_one_ground_shared_tower():
     assert Action('PICK', 2) in steps and steps[-1] == Action('PLACE_ONE', 2)
     field['spot_03'] = Tower(ground=2, seen=True)
     assert choose(field, goods).pick_count == 1
+
+
+def test_short_match_keeps_started_l2_and_ignores_shared_towers():
+    from rc2027_decision.world.planner import MUSTIKA
+    done = Tower(ground=2, sky_owner=SKY_OURS, seen=True)
+    field = towers(spot_07=done, spot_08=Tower(seen=True),
+                   spot_05=Tower(ground=1, seen=True),
+                   spot_02=Tower(ground=2, sky_owner=SKY_OTHERS, seen=True))
+    assert choose(field, Goods(cap_stack=1, sky=1), one_l2=True).spot == 'spot_05'
+    assert carry_choice(field, 'cap', count=2, one_l2=True).spot == 'spot_05'
+    field['spot_05'] = done
+    assert choose(field, Goods(ground=1), one_l2=True).action == MUSTIKA
+    assert carry_choice(field, 'ground', one_l2=True) is None

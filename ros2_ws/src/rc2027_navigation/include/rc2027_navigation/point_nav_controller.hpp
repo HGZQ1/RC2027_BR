@@ -44,6 +44,7 @@ struct NavConfig
   double angular_decel{3.0};         // rad/s²
   double max_linear_accel{1.0};      // m/s²，指令变化率限幅（加速和减速都限）
   double max_angular_accel{4.0};     // rad/s²
+  double fine_approach_speed{0.0};   // 短距离直进精对齐的速度上限；0 关闭此保护
   double xy_tolerance{0.03};         // m
   double yaw_tolerance{0.03};        // rad（约 1.7°）
   double goal_timeout{30.0};         // s，整个目标的时间上限
@@ -104,6 +105,10 @@ public:
   /// 但照样检查总超时，定位一直不回来也不会永远挂着
   Twist2D hold(double now);
 
+  bool guarded_precision_goal() const {return cfg_.fine_approach_speed > 0.0 && xy_tol_ <= 0.011;}
+  bool realigning_same_goal() const {return realigning_same_goal_;}
+  double goal_start() const {return goal_start_;}
+  bool approach_overrun() const {return short_approach_ && travel_remaining_ <= 0.0;}
   NavPhase phase() const {return phase_;}
   const Pose2D & goal() const {return goal_;}
   /// 最近一次 update 时离目标的距离（m）
@@ -127,6 +132,12 @@ private:
   int pushes_{0};
   double last_progress_{0.0};
   double last_dist_{0.0};
+  void account_approach_motion(double now);
+  bool short_approach_{false};
+  bool realigning_same_goal_{false};
+  double command_time_{0.0};
+  double travel_remaining_{0.0};
+  double settled_since_{-1.0};
   Twist2D last_cmd_{};
 };
 

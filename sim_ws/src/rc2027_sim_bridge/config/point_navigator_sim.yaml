@@ -10,3 +10,4 @@ point_navigator:
     max_angular_accel: 6.0          # rad/s²
     angular_decel: 5.0              # rad/s²
     kp_angular: 3.0                 # 1/s
+    fine_approach_speed: 0.25       # m/s，最后一段精确直进

@@ -145,7 +145,7 @@ run det ros2 launch rc2027_perception block_detector.launch.py sim:=true
 run tower ros2 run rc2027_utils sim_tower --ros-args -p random_field:=true -p seed:="${SEED:-0}"
 run gt ros2 run rc2027_utils ground_truth_check
 run flow ros2 launch rc2027_decision flow.launch.py use_sim_time:=true mock_actions:=false \
-  planner:=true "flows:=$FLOW"
+  planner:=true "strategy:=${STRATEGY:-full}" "flows:=$FLOW"
 sleep 8
 
 if ! grep -q '规划器接入栈' "$LOG/flow.log"; then
