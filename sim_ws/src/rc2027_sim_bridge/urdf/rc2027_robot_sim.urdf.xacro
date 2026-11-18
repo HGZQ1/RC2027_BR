@@ -1,0 +1,147 @@
+<?xml version="1.0"?>
+<!--
+  仿真用 URDF：原样 include 真车的 rc2027_bringup/urdf/rc2027_robot.urdf.xacro，
+  只在外面加 Gazebo 的东西（全向运动插件、Mid-360 仿真雷达、IMU、真值、摩擦）。
+  真车 URDF 一个字没改，仿真依赖（ros2_livox_simulation 等）也不会漏进真车的包。
+
+  尺寸参数（wheel_radius 等 xacro:arg）由 rc2027_bringup/launch/display.launch.py
+  从 robot_params.yaml 读出来传进来，跟真车同一份数据。
+-->
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="rc2027_robot">
+
+  <xacro:include filename="$(find rc2027_bringup)/urdf/rc2027_robot.urdf.xacro"/>
+  <xacro:include filename="$(find rc2027_sim_bridge)/urdf/mid360_sim.xacro"/>
+
+  <!-- 仿真雷达点数/量程，可以用 sim_mapping.launch.py xacro_overrides:="sim_lidar_samples:=10000"
+       临时改（电脑卡就再降）。默认值按真机，理由见 mid360_sim.xacro -->
+  <xacro:arg name="sim_lidar_samples" default="20000"/>
+
+  <!-- 爬楼梯回放模式（2026-10-04）：rc2027_utils 的 sim_climb_replay 直接设置车的位姿和速度。
+       这时要关掉重力（不然两次设置之间车会往下掉，IMU 读到的不对）、去掉 planar_move（它每步
+       把竖直速度清零、按 cmd_vel 覆盖速度，会跟回放抢）。由 sim_mapping.launch.py replay:=true 打开 -->
+  <xacro:arg name="sim_replay" default="false"/>
+  <xacro:arg name="sim_lidar_max_range" default="40.0"/>
+
+  <!-- 车后货仓里的方块（2026-10-05，测"车体 + 货仓"裁剪框 cloud_crop 用）：理想化成一个盒子，
+       底面在底盘顶（base_link z 0.15）上方 15 cm、850 mm 高（2 块地块一摞 700 mm + 余量），在车后半边。
+       机械说拿到的方块存在车后、比底盘高 15 cm；具体位置等图纸。sim_mapping.launch.py sim_cargo:=true 打开 -->
+  <xacro:arg name="sim_cargo" default="false"/>
+  <xacro:if value="$(arg sim_cargo)">
+    <link name="sim_cargo">
+      <visual>
+        <geometry><box size="0.35 0.35 0.85"/></geometry>
+        <material name="cargo"><color rgba="0.8 0.2 0.2 1"/></material>
+      </visual>
+      <collision><geometry><box size="0.35 0.35 0.85"/></geometry></collision>
+      <inertial>
+        <mass value="0.1"/>
+        <inertia ixx="0.001" ixy="0" ixz="0" iyy="0.001" iyz="0" izz="0.001"/>
+      </inertial>
+    </link>
+    <joint name="sim_cargo_joint" type="fixed">
+      <parent link="base_link"/>
+      <child link="sim_cargo"/>
+      <origin xyz="-0.175 0 0.725" rpy="0 0 0"/>
+    </joint>
+    <!-- 不合并成同一个刚体：Gazebo 默认把固定关节连着的 link 合成一个，而 Livox 插件（跟 Gazebo 自带的射线
+         传感器一样）会把自己挂的那个刚体从射线检测里拿掉——合并以后货仓就成了"雷达看不见的车体的一部分"，
+         裁不裁都一样（2026-10-05 用户第一次测就是这样）。分开以后雷达才打得到它 -->
+    <gazebo reference="sim_cargo_joint">
+      <disableFixedJointLumping>true</disableFixedJointLumping>
+      <preserveFixedJoint>true</preserveFixedJoint>
+    </gazebo>
+  </xacro:if>
+
+  <!-- ══════════ 仿真雷达：挂在真车 URDF 的 lidar_link 上，零偏移 ══════════
+       topic=livox/lidar：插件发 livox_ros_driver2/CustomMsg，Point-LIO 的
+       lid_topic 一致（lidar_type: 1，跟真车同一种消息）。
+       宏是本包的 mid360_sim.xacro（点数/量程可调，2026-10-04 为了性能从 vendor 宏改过来） -->
+  <xacro:mid360_sim name="livox_sim" parent="lidar_link" topic="livox/lidar"
+                    samples="$(arg sim_lidar_samples)" max_range="$(arg sim_lidar_max_range)">
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+  </xacro:mid360_sim>
+
+  <!-- ══════════ 仿真 IMU（坑 1：雷达插件不发 IMU，单独加）══════════
+       和雷达挂在同一个 link（livox_sim）上 → Point-LIO 仿真配置里
+       extrinsic_T/R 是零/单位阵。雷达的安装位置/俯仰来自 robot_params.yaml 的 lidar 节
+       （2026-10-04 起车头外伸、前下倾 30°），这里零偏移挂在 lidar_link 上跟着倾斜。
+       输出单位 m/s²（坑 2）→ 仿真配置 acc_norm: 9.81。
+       200 Hz 对应 imu_time_inte: 0.005 -->
+  <gazebo reference="livox_sim">
+    <sensor name="livox_imu" type="imu">
+      <always_on>true</always_on>
+      <update_rate>200</update_rate>
+      <plugin name="livox_imu_plugin" filename="libgazebo_ros_imu_sensor.so">
+        <ros>
+          <remapping>~/out:=livox/imu</remapping>
+        </ros>
+        <initial_orientation_as_reference>false</initial_orientation_as_reference>
+      </plugin>
+    </sensor>
+  </gazebo>
+
+  <!-- ══════════ 全向运动插件（舵轮的替身）══════════
+       2026-10-04 底盘定为舵轮，原来的差速插件换掉。Gazebo Classic 没有现成的舵轮
+       插件，用 gazebo_ros 自带的 planar_move：订阅 cmd_vel（vx/vy/wz），每个更新周期
+       直接设置车体速度，不经过轮子。等于"理想全向底盘"：舵轮转向延迟、打滑都不模拟，
+       验证定位 + 导航逻辑够用，调导航参数时要记得真车会慢一拍。
+       ⚠️ 插件源码里每次都把竖直速度设成 0（只管水平面），车开上坡道/L1 平台这种
+       有高度变化的地方不会像真车那样爬，平地上没问题。
+       publish_odom_tf=false：定位用 Point-LIO，不让它再发一棵 odom TF；/odom 照发。
+       teleop_twist_keyboard 按住 Shift 是横移（全向模式） -->
+  <xacro:unless value="$(arg sim_replay)">
+  <gazebo>
+    <plugin name="planar_move" filename="libgazebo_ros_planar_move.so">
+      <update_rate>50</update_rate>
+      <publish_rate>50</publish_rate>
+      <publish_odom>true</publish_odom>
+      <publish_odom_tf>false</publish_odom_tf>
+      <odometry_frame>odom</odometry_frame>
+      <robot_base_frame>base_footprint</robot_base_frame>
+    </plugin>
+  </gazebo>
+  </xacro:unless>
+  <xacro:if value="$(arg sim_replay)">
+    <!-- 固定关节会被合并进根 link base_footprint，两个都写上保险 -->
+    <gazebo reference="base_footprint">
+      <turnGravityOff>true</turnGravityOff>
+    </gazebo>
+    <gazebo reference="base_link">
+      <turnGravityOff>true</turnGravityOff>
+    </gazebo>
+  </xacro:if>
+
+  <!-- ══════════ 真值（只有仿真有）══════════
+       Gazebo 直接给出车体在世界系里的真实位姿，发 /ground_truth/odom，用来检查
+       定位链路 map -> base_footprint 算得对不对（rc2027_utils 的
+       ground_truth_check）。Gazebo 世界系 = field.xml 坐标系 = 我们的 map，
+       所以两者可以直接比。
+       body_name 用 base_footprint：URDF 转 SDF 时固定关节连着的 link 会被合并进
+       父 link，base_link 被并进根节点 base_footprint，Gazebo 里只剩这个名字。
+       没有订阅者时插件不发（插件源码里判断了），不占资源 -->
+  <gazebo>
+    <plugin name="ground_truth" filename="libgazebo_ros_p3d.so">
+      <ros>
+        <remapping>odom:=ground_truth/odom</remapping>
+      </ros>
+      <body_name>base_footprint</body_name>
+      <frame_name>world</frame_name>
+      <update_rate>50</update_rate>
+    </plugin>
+  </gazebo>
+
+  <!-- ══════════ 摩擦 ══════════
+       planar_move 直接设车体速度，轮子跟地面的摩擦只会跟它对着干（两次更新之间
+       把车拖慢），所以四个轮子摩擦都设 0，车体只靠插件推着走、靠重力压在地上 -->
+  <xacro:macro name="frictionless" params="link">
+    <gazebo reference="${link}">
+      <mu1>0.0</mu1>
+      <mu2>0.0</mu2>
+    </gazebo>
+  </xacro:macro>
+  <xacro:frictionless link="fl_wheel_link"/>
+  <xacro:frictionless link="fr_wheel_link"/>
+  <xacro:frictionless link="rl_wheel_link"/>
+  <xacro:frictionless link="rr_wheel_link"/>
+
+</robot>

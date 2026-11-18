@@ -1,0 +1,47 @@
+# GPU 直通的可选覆盖文件，不随主 docker-compose.yml 默认启用。
+#
+# 为什么是单独一个文件：队友的机器不一定有 NVIDIA 显卡/nvidia-container-toolkit，
+# 这段配置在没有的机器上会导致容器直接起不来（不是"退化成软件渲染"，是起不来）。
+# 用这个文件的人自己叠加，不影响其他人默认的 docker-compose.yml。
+#
+# 用法：
+#   docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d br
+#
+# 前提（2026-10-03 助教在这台机器上实测过，RTX 5080 Laptop GPU）：
+#   - 宿主机装了 nvidia-container-toolkit，/etc/docker/daemon.json 注册了 nvidia runtime
+#   - 验证命令：docker run --rm --gpus all --entrypoint nvidia-smi rc2027:br-dev -L
+#
+# 不需要重新 build 镜像：图形直通只是运行时往容器里注入驱动库
+# （libGLX_nvidia.so.0 等），镜像本身不需要装 CUDA。跟 INSTALL_PYTORCH
+# 那条独立的 GPU 路径（训练/推理用，需要重新 build）无关。
+#
+# ⚠️ 这台机器是 50 系显卡：以后真要开 INSTALL_PYTORCH 时必须用
+# GPU_SERIES=50（默认的 40 对应 cu126，不支持 sm_120），见 docker/README.md。
+
+services:
+  br:
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=all   # 必须包含 graphics，否则不会注入 OpenGL 相关库
+      # 如果笔记本是双显卡、RViz/Gazebo 仍然走到了 Mesa（软件渲染），
+      # 取消下面这行注释强制指定 vendor：
+      # - __GLX_VENDOR_LIBRARY_NAME=nvidia
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  tr:
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=all
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]

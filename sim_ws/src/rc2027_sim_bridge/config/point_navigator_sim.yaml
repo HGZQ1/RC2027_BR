@@ -1,0 +1,12 @@
+# 仿真试验：保留上一档的最高速度，提高起步、制动和近点收敛速度。
+# 停车仍由位置和角度门限判定。实际到底需要多长距离，以 Gazebo 真值为准。
+point_navigator:
+  ros__parameters:
+    max_linear_speed: 1.0           # m/s
+    max_angular_speed: 3.0          # rad/s
+    max_linear_accel: 3.0           # m/s²
+    linear_decel: 2.5               # m/s²
+    kp_linear: 2.4                  # 1/s
+    max_angular_accel: 6.0          # rad/s²
+    angular_decel: 5.0              # rad/s²
+    kp_angular: 3.0                 # 1/s

@@ -1,0 +1,149 @@
+# 搭两座塔端到端仿真（方案 2：近点先封顶），2026-10-05。BR 从 L1 Retry Zone 开局（仿真 start_zone:=l1）。
+#
+#   ros2 launch rc2027_sim_bridge sim_mapping.launch.py start_zone:=l1
+#   ros2 launch rc2027_perception block_detector.launch.py sim:=true
+#   ros2 run rc2027_utils sim_tower        # 假电控 + 假 TR：摆第 1 趟货；PICK / PLACE 真的挪方块；交接区空了摆下一趟
+#   ros2 launch rc2027_decision flow.launch.py use_sim_time:=true mock_actions:=false \
+#       flows:=/workspace/ros2_ws/src/rc2027_decision/config/flows/two_towers_sim.yaml
+#   ros2 service call /flow_runner/start std_srvs/srv/Trigger
+#
+# 近点 N = spot_07 (-2.7, -2.7)。远点 F = spot_02 (0, 2.7)（L1 北部共享区）。
+# 2026-10-07：spot_01 南部三次全流程正常，那套点在 config/spot_approaches.yaml。这一版换北部试。
+# 正南 2.3 m 的观察位在 L2 上。从南边朝北放会顶上 L2 北侧（南部正北预备位已经顶过），改从西边朝东放。
+#   TR 第 1 趟：2 地一摞 + 1 地      → 单块放 F（塔基）、2 叠放 N（两层）（先拿单块，见流程里的注释）
+#   TR 第 2 趟：地 + 天一摞 + 1 天    → 天空块封 N（近塔完成）、地 + 天放 F（中段 + 塔顶，远塔完成 = Mandate）
+# 每次放完退到观察位（离建造点 2.3 m、正对着，完整的塔正面看得全）VERIFY 层数。
+#
+# 拿 / 放都是"在预备位姿（退 0.3 m）停准 + 修定位 → 直接开进去"。间隙 15 cm（gripper_offset 0.575，2026-10-07）：
+# 原来 2.5 cm 比最后一步的定位滞后小，车会顶上方块。
+# 点都是仿真演示用的（map 系 = Gazebo world），真车用 teach_point 录、点文件里同名的会覆盖这里的。
+main: two_towers_sim
+flows:
+  two_towers_sim: |
+    # ── TR 第 1 趟：2 地一摞 + 1 地 ──
+    # 先拿单块（离交接区入口近）：先拿那一摞的话，车从东边进去时车身会擦到旁边的单块（host 几何检查）
+    CALL look_transfer
+    DETECT transfer_red ground transfer_single
+    CALL pick
+    ACTION PICK 1
+    CALL back_out
+    CALL place_far
+    ACTION PLACE 1
+    CALL check_far
+    VERIFY spot_02 1
+    CALL look_transfer
+    DETECT transfer_red stack transfer_stack
+    CALL pick
+    ACTION PICK 2
+    CALL back_out
+    CALL place_near
+    ACTION PLACE 1
+    CALL check_near
+    VERIFY spot_07 2
+    # ── TR 第 2 趟：地 + 天一摞 + 1 天 ──
+    CALL look_transfer
+    DETECT transfer_red sky transfer_single
+    CALL pick
+    ACTION PICK 1
+    CALL back_out
+    CALL look_near
+    DETECT spot_07 stack near_place AS put
+    CALL put_here
+    ACTION PLACE 3
+    CALL check_near
+    VERIFY spot_07 2 sky
+    CALL look_transfer
+    DETECT transfer_red groundsky transfer_stack
+    CALL pick
+    ACTION PICK 2
+    CALL back_out
+    CALL look_far
+    DETECT spot_02 ground far_place AS put
+    CALL put_here
+    ACTION PLACE 2
+    CALL check_far
+    VERIFY spot_02 2 sky
+
+  look_transfer: |
+    NAV transfer_look
+    RELOCALIZE
+    WAIT 1
+
+  pick: |
+    NAV transfer_gate
+    ALIGN @pick_pre
+    NAV @pick fine
+
+  back_out: |
+    NAV @pick_pre
+    NAV transfer_gate
+
+  # 先到 near_lane 转成朝南再往南开：从交接区入口直接过去时车头朝西，前伸的雷达会擦着 L1 西边的围栏（host 几何检查）
+  place_near: |
+    NAV near_lane
+    ALIGN near_place_pre
+    NAV near_place fine
+
+  check_near: |
+    NAV near_place_pre
+    NAV near_look
+    WAIT 1
+
+  # 远点在 L2 北边。先沿 L2 西侧开到 far_west，再往东。从交接区直插会切进 L2 西北角
+  place_far: |
+    NAV far_west
+    NAV far_lane
+    ALIGN far_place_pre
+    NAV far_place fine
+
+  # ── 往已有的塔上放：先在观察位看清下面那摞实际在哪，对着它算放置位姿（@put），不对着建造点中心 ──
+  # 2026-10-05 用户仿真：远塔塔基放偏了 4 cm，第二次按建造点中心去放时车头（雷达离方块面只留 2.5 cm）顶上塔基、车被挤歪，
+  # 中段放偏 10 cm、出界。对着检测到的塔基停车，不管塔基偏多少间隙都是设计值（现在 15 cm），上一层也跟下一层对齐
+  look_near: |
+    NAV near_lane
+    NAV near_look
+    RELOCALIZE
+    WAIT 1
+
+  look_far: |
+    NAV far_west
+    NAV far_lane
+    NAV far_look
+    RELOCALIZE
+    WAIT 1
+
+  put_here: |
+    ALIGN @put_pre
+    NAV @put fine
+
+  check_far: |
+    NAV far_place_pre
+    NAV far_look
+    WAIT 1
+
+points:
+  # 交接区（同 transfer_pick_demo.yaml，只是一摞的位置往南挪了 10 cm，见场景 towers_plan2.yaml）
+  # 2026-10-07 换掉原来的 (-2.2, 0.2) 朝西南：那个点两个水平方向约束都不够（弱 0.24～0.42），RELOCALIZE 一直被拒。
+  # 助教测过（各一次）：这个点有货时弱/强 1.75/3.83，过线，单块和一摞上下两层都有点；撤掉方块再校 1.89/3.13，仍过线。
+  # 朝向 2.283 rad = 朝斜坡近端 (-3.4, -0.6)。最高点贴着视场上沿，全流程时看层数有没有报少
+  # 2026-10-10 先顶 (−2.50, −1.40) 朝 138°。校准三次里一次不过，方块中心偏约 1 cm。
+  transfer_look:   {x: -2.50, y: -1.40, theta: 2.415}
+  # 入口要在拿取位姿东边：间隙改成 15 cm 以后单块的拿取位姿在 x −2.675，原来的入口 −2.75 比它更靠西，
+  # 开过去会先顶到 7.5 cm 才退回来
+  transfer_gate:   {x: -2.30, y: -1.2,  theta: 3.1416}
+  transfer_stack:  {x: -3.125, y: -1.15, theta: 3.1416}  # TR 想放的一摞 (-3.70, -1.15)，gripper_offset 0.575
+  transfer_single: {x: -2.675, y: -1.55, theta: 3.1416}  # TR 想放的单块 (-3.25, -1.55)
+  # 近点 N = spot_07 (-2.7, -2.7)：从北边朝南放（gripper_offset 0.575，离方块面 15 cm）
+  near_lane:       {x: -2.55, y: -1.35, theta: -1.5708}  # 过路点：在这里转成朝南
+  near_place:      {x: -2.7,  y: -2.125, theta: -1.5708}
+  near_place_pre:  {x: -2.7,  y: -1.825, theta: -1.5708}
+  # 观察位离塔 2.3 m：1.9 m 时看不到近塔的天空块（2026-10-05 用户仿真）——天空块比地块往里缩 7.5 cm，雷达往上斜着看，
+  # 下半截被下面地块的顶边挡住、上半截出了视场（正前方往上只有 22°），只剩一条窄带。host 扫描里完整塔 1.9 m 也只是刚够
+  near_look:       {x: -2.7,  y: -0.4,  theta: -1.5708}  # 离 spot_07 2.3 m
+  # 远点 F = spot_02 (0, 2.7)：从西边朝东放（gripper_offset 0.575，离方块面 15 cm）
+  # 车身 0.30 m，北缘在 y 3，车在 y 2.7 时北侧还剩 15 cm
+  far_west:        {x: -2.30, y:  2.20, theta: 1.5708}   # 过路：L2 西侧、已经到北边，车头朝北
+  far_lane:        {x: -1.60, y:  2.20, theta: 0.0}
+  far_place:       {x: -0.575, y:  2.700, theta: 0.0}
+  far_place_pre:   {x: -0.875, y:  2.700, theta: 0.0}
+  far_look:        {x: -2.206, y:  2.05, theta: 0.287}   # 离 spot_02 2.3 m，朝向塔心（+16°）。正南同距离在 L2 上

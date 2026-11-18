@@ -1,0 +1,9 @@
+# 仿真换位之后：Point-LIO 跟不上瞬移，按这个已知位姿重新锁定。
+# 不发 PAUSED / RESUMED，不是比赛里的 Retry。
+float64 x
+float64 y
+float64 z        # map 系里车脚下的台面高度（规则书高度，不是 Gazebo 网格）
+float64 yaw
+---
+bool success
+string message

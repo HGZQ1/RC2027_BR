@@ -1,0 +1,66 @@
+# BR 搭两座塔：用户 10-04 定的"方案 2：近点先封顶"（对比见 notes/模板/比赛流程大白话模板.md 末尾）。
+#   TR 第 1 趟：3 地（交接区摆成"2 块叠 + 1 块单放"）
+#   TR 第 2 趟：2 天 + 1 地（"地 + 天一摞 + 1 天单放"，天空块本方颜色朝上）
+#   BR：2 地 → 近点 N（两层）→ 1 地 → 远点 F（一层）→ 1 天 → N（近塔完成）→ 地 + 天 → F（远塔完成 = Mandate）
+#
+# ⚠️ 骨架：点还没录（场地 / 车都没有），动作码是占位（rc2027_interface/config/action_codes.yaml）。
+#    赛前检查会报"点 xxx 没录"，录好点（teach_point，名字跟下面一致）才能跑。
+#    "整摞抓、整摞放"要等两件事确认：BR 夹爪能不能抓一摞；裁判认不认一次放下两块算按顺序放。
+#    不行的话把 pick_stack / place_* 拆成一块一块的，只改这个文件。
+#
+# 用到的点（红方；蓝方用另一份点文件，名字一样）：
+#   stairs     楼梯口（地面，对准楼梯）
+#   transfer_stack / transfer_single   交接区里"一摞"和"单块"的拿取位（先用示教点，以后换成方块检测）
+#   tower_near / tower_far             近点 N / 远点 F 的放置位（车停的位置，不是建造点中心）
+#   transfer_wait                      交接区旁等 TR 的位置
+#
+# ⚠️ 2026-10-05 仿真发现：车顶到方块 / 塔跟前时，前倾雷达的视野被挡掉大半，前后方向定位会漂（见 0002 那天的记录）。
+#    下面的 "ALIGN 拿放点" 以后要改成 "ALIGN 拿放点_pre（退 0.3 m）→ NAV 拿放点 fine"，跟 transfer_pick_demo.yaml 一样。
+#    等点录了一起改
+#
+# PLACE 的参数 = 放到第几层的位置（1 = 建造点地面，2 = 一层地块上面，3 = 两层上面），电控按它定抬多高。
+main: two_towers
+retry_flows:
+  start: two_towers       # 地面 Retry：重新上楼梯。⚠️ v1 不知道已经搭了什么，会从头搭——以后世界模型来挑
+  l1: after_l1_retry      # L1 Retry Zone（朝南）：先回交接区等人决定，v1 不自动续搭
+flows:
+  two_towers: |
+    CALL climb_l1
+    # ── TR 第 1 趟：2 地一摞 + 1 地单放 ──
+    CALL wait_goods
+    CALL pick_stack
+    ALIGN tower_near
+    ACTION PLACE 1          # 2 地一摞放到 N：塔基 + 中段
+    CALL pick_single
+    ALIGN tower_far
+    ACTION PLACE 1          # 1 地放到 F：塔基
+    # ── TR 第 2 趟：地 + 天一摞 + 1 天单放 ──
+    CALL wait_goods
+    CALL pick_single
+    ALIGN tower_near
+    ACTION PLACE 3          # 天空块封 N：近塔完成
+    CALL pick_stack
+    ALIGN tower_far
+    ACTION PLACE 2          # 地 + 天一摞放到 F 的塔基上：远塔完成 = Mandate（N / F 至少一个在共享区）
+    NAV transfer_wait
+
+  climb_l1: |
+    ALIGN stairs
+    ACTION CLIMB_L1
+    RELOCALIZE              # 上楼梯后定位最容易漂（0003 决定 10），停稳先修一次
+
+  # 等 TR 送货。现在没有"货到了"的信号，先占个位；以后换成方块检测（交接区有没有块）或者操作手按键
+  wait_goods: |
+    NAV transfer_wait
+    WAIT 0
+
+  pick_stack: |
+    ALIGN transfer_stack
+    ACTION PICK 2
+
+  pick_single: |
+    ALIGN transfer_single
+    ACTION PICK 1
+
+  after_l1_retry: |
+    NAV transfer_wait

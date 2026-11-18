@@ -1,0 +1,55 @@
+serial_controller:
+  ros__parameters:
+    port: "/dev/ttyACM0"
+    baudrate: 115200
+    debug_raw_frame: false
+
+config:
+  buffer_size: 1024
+  head_byte_1: 0x5A
+  head_byte_2: 0xA5
+  checksum: "CRC8"
+  require_handshake: true
+  ignore_version_mismatch: false
+  strict_heartbeat: true
+  heartbeat_interval_ms: 1000
+  heartbeat_timeout_ms: 3000
+  reliable_retry_interval_ms: 100
+  reliable_max_retries: 3
+  qos_depth: 10
+
+type_mappings:
+  f32: "float"
+  i32: "int32_t"
+  u8: "uint8_t"
+  u16: "uint16_t"
+  u32: "uint32_t"
+
+messages:
+  - name: "FixtureCommand"
+    id: 0x01
+    direction: "tx"
+    debug_log_mode: "on"
+    sub_topic: "fixture/command"
+    ros_msg: "std_msgs/msg/UInt32"
+    fields:
+      - { proto: "value", type: "u32", ros: "data" }
+
+  - name: "FixtureReliableCommand"
+    id: 0x02
+    direction: "tx"
+    reliable: true
+    debug_log_mode: "on"
+    sub_topic: "fixture/reliable_command"
+    ros_msg: "std_msgs/msg/UInt32"
+    fields:
+      - { proto: "value", type: "u32", ros: "data" }
+
+  - name: "FixtureTelemetry"
+    id: 0x03
+    direction: "rx"
+    debug_log_mode: "on"
+    pub_topic: "fixture/telemetry"
+    ros_msg: "std_msgs/msg/Float32"
+    fields:
+      - { proto: "value", type: "f32", ros: "data" }

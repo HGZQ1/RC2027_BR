@@ -1,0 +1,19 @@
+# 固定路线，换底盘时复制本文件调整点位和容差；不要覆盖比赛配置。
+l2_cycle_test:
+  ros__parameters:
+    cycles: 10
+    mode: sim                    # sim：仿真动作后 relatch；hardware：真实动作后 ICP
+    approaches_path: /workspace/ros2_ws/src/rc2027_decision/config/spot_approaches.yaml
+    action_codes_path: /workspace/ros2_ws/src/rc2027_interface/config/action_codes.yaml
+    output_dir: /tmp/rc2027_l2_cycles
+    surface_offset: 0.05          # hardware 必须按真实场地改，通常 0.0
+    l1_height: 0.6
+    l2_height: 0.9
+    dwell_seconds: 5.0
+    height_tolerance: 0.08
+    xy_tolerance: 0.05
+    yaw_tolerance_deg: 3.0
+    navigation_timeout: 45.0
+    action_timeout: 45.0
+    service_timeout: 12.0
+    startup_timeout: 120.0        # 单独等待 Gazebo / Point-LIO 完成启动

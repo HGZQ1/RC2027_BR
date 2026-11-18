@@ -1,0 +1,27 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>rc2027_sim_bridge</name>
+  <version>0.0.1</version>
+  <description>仿真胶水：带 Gazebo 插件的 URDF、仿真用 Point-LIO 配置、放车+建图 launch（只用于仿真，不进比赛）</description>
+  <maintainer email="wdsj2009.2006101@gmail.com">rc2027</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <exec_depend>rc2027_bringup</exec_depend>
+  <exec_depend>rc2027_navigation</exec_depend>
+  <exec_depend>ros2_livox_simulation</exec_depend>
+  <exec_depend>robocon_2027_gazebo</exec_depend>
+  <exec_depend>point_lio</exec_depend>
+  <exec_depend>gazebo_ros</exec_depend>
+  <exec_depend>gazebo_plugins</exec_depend>
+  <exec_depend>xacro</exec_depend>
+  <exec_depend>robot_state_publisher</exec_depend>
+  <exec_depend>rviz2</exec_depend>
+  <exec_depend>python3-yaml</exec_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

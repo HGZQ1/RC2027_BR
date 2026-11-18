@@ -1,0 +1,33 @@
+# build 产物
+**/build/
+**/install/
+**/log/
+
+# rosbag
+**/*.bag
+**/*.db3
+**/rosbag2_*/
+
+# python
+**/__pycache__/
+**/*.pyc
+
+# 仿真场地的大体积 mesh（克隆自外部仓库时再决定是否作为 submodule 纳管）
+sim_ws/src/rc2027_field_assets/meshes/
+sim_ws/src/robocon_2027_gazebo/**/meshes/
+sim_ws/src/robocon_2027_gazebo/**/visuals_fixed/
+
+.vscode/
+
+# 离线依赖缓存：librealsense 源码 + PyTorch wheel，几个G到十几个G，绝对不能进 git。
+# 只存在于每个人自己的机器上，谁需要就自己从对应来源重新放一份进去。
+docker/docker_deps/
+
+# point_lio 是 vendor 进来的（不改源码），但这两类是运行时/构建期生成的产物，
+# 不是源码本身：compile_commands.json 是个指向容器内 /build/ 路径的悬空符号链接，
+# Log/*.txt 是每次跑程序时写的空日志文件，留着 guide.md 说明文档即可
+external_ws/src/point_lio/compile_commands.json
+external_ws/src/point_lio/Log/*.txt
+
+# 宿舍台架测试录的 rosbag（助教 10-05）
+bags/

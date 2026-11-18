@@ -1,0 +1,17 @@
+# 动作码表（占位）。Flow 里写 `ACTION <名字> [参数]`，按这张表换成 action_id 发给电控。
+#
+# ⚠️ 全是占位：机械 / 电控还没定动作组，编号和名字都会改。现在只是让 Flow 引擎在仿真里
+#    能用 mock_action_executor 跑通"走点 + 动作"的流程。定稿后这张表要和电控那边的 C 头文件
+#    出自同一份数据（README 里"单一数据源"那条），不要两边各写一份
+#
+# duration：mock_action_executor 假装执行多久（s），真电控不看这个。按 notes/模板/比赛流程大白话模板.md
+# 粗估的"每块拿 3 s、放 3 s"，爬楼梯 20 s
+actions:
+  PICK:          {id: 1, duration: 3.0}    # 夹取，param = 块数（1 / 2）
+  PLACE:         {id: 2, duration: 3.0}    # 放下，param = 放到第几层的位置（1 = 建造点地面，2 = 一层上面，3 = 两层上面）
+  FLIP_SKY:      {id: 3, duration: 3.0}    # 翻天空块 180°
+  CLIMB_L1:      {id: 4, duration: 20.0}   # 爬楼梯上 L1
+  CLIMB_L2:      {id: 5, duration: 1.0}    # 上楼。机构还没有，仿真和真代码都是直接换位
+  CLIMB_DOWN:    {id: 8, duration: 1.0}    # 下楼。同样直接换回 L1 楼梯口，不开下台阶
+  PLACE_MUSTIKA: {id: 6, duration: 3.0}
+  RELEASE_ALL:   {id: 7, duration: 1.0}    # 比赛结束前松手

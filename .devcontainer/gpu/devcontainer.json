@@ -1,0 +1,39 @@
+// 跟根目录 .devcontainer/devcontainer.json 完全一样，唯一区别是
+// dockerComposeFile 多叠加了 ../../docker/docker-compose.gpu.yml
+// （GPU 渲染直通，见 docker/README.md 的"GPU 直通"一节）。
+//
+// 单独放一个配置，而不是直接改根目录那份：GPU 直通的那段配置在没有
+// NVIDIA 显卡/nvidia-container-toolkit 的机器上会导致容器直接起不来，
+// 不能默认套到所有人身上。VS Code 的 Dev Containers 扩展支持仓库里存在
+// 多套配置：命令面板执行 "Dev Containers: Reopen in Container" 时会弹出
+// 选择列表，这份叫 "RC2027 (BR, GPU)"，没有 NVIDIA 显卡的队友选根目录那份
+// 默认的 "RC2027 (BR)" 就行，两份配置平时互不影响。
+{
+  "name": "RC2027 (BR, GPU)",
+  "dockerComposeFile": [
+    "../../docker/docker-compose.yml",
+    "../../docker/docker-compose.gpu.yml"
+  ],
+  "service": "br",
+  "runServices": ["br"],
+  "workspaceFolder": "/workspace",
+  "shutdownAction": "none",
+  "remoteUser": "root",
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-vscode.cpptools",
+        "ms-python.python",
+        "ms-iot.vscode-ros",
+        "redhat.vscode-yaml",
+        "xaver.clang-format"
+      ],
+      "settings": {
+        "C_Cpp.default.compilerPath": "/usr/bin/g++"
+      }
+    }
+  },
+
+  "postStartCommand": "echo '[devcontainer] 如果要用 rviz2，记得在宿主机（不是这个容器里）执行过一次: xhost +local:docker'"
+}

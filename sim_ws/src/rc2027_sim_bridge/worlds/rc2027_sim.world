@@ -1,0 +1,81 @@
+<?xml version="1.0"?>
+<!--
+  仿真用 world（2026-10-04）——场地模型还是 robocon_2027_gazebo 包里的
+  model://robocon_2027_field（launch 里把那个包加进 GAZEBO_MODEL_PATH），
+  这里只换物理和渲染设置，不改 vendor 的 robocon_2027_classic.world。
+
+  跟原版的区别（为了性能，助教实测 gzserver 单线程跑满、RTF 0.56）：
+    - max_step_size 0.001 -> 0.002，real_time_update_rate 500：物理 500 Hz。车是
+      planar_move 直接设速度的理想模型，不需要 1 kHz 物理；IMU 200 Hz 仍然是物理
+      频率的整数分之一
+    - 关掉阴影：gzclient 渲染省一点，对仿真结果没影响
+    - 加了 gazebo_ros_state 插件（/gazebo/set_entity_state），爬楼梯回放要用
+    - 加了场馆墙（下面 venue_walls 的注释）
+  重力用 9.80665（原版就是这个值）。
+-->
+<sdf version="1.7">
+  <world name="robocon_2027">
+    <gravity>0 0 -9.80665</gravity>
+    <physics name="ode" type="ode">
+      <max_step_size>0.002</max_step_size>
+      <real_time_factor>1.0</real_time_factor>
+      <real_time_update_rate>500</real_time_update_rate>
+    </physics>
+    <scene>
+      <ambient>0.25 0.25 0.25 1</ambient>
+      <background>0.72 0.78 0.84 1</background>
+      <shadows>false</shadows>
+    </scene>
+    <light name="sun" type="directional">
+      <cast_shadows>false</cast_shadows>
+      <pose>0 0 12 0 0 0</pose>
+      <diffuse>0.65 0.65 0.65 1</diffuse>
+      <specular>0.10 0.10 0.10 1</specular>
+      <direction>-0.35 0.25 -0.9</direction>
+    </light>
+    <include>
+      <uri>model://robocon_2027_field</uri>
+    </include>
+    <!-- 场馆墙（2026-10-04）：离场地中心 9 m（围栏外约 3.5 m）、高 4 m 的四面墙。
+         为什么要有：原来场地外什么都没有，BR 爬楼梯时车头抬起约 31°，雷达几乎只看得到台阶面和
+         天空，南北方向（前进方向）没有任何约束——host 上算过，楼梯中段打到"法向朝 ±y"表面的点只有
+         34 个（地面上是 545 个），Point-LIO 只能靠 IMU，实测 y 漂了 1.85 m。真实比赛场馆有墙、
+         看台、横幅，加墙以后同一位置 763 个。空场地的对照用 rc2027_sim_empty.world（world:=…）。
+         先验地图里没有这些墙，field_localizer 的 ICP 只用场地范围内的点（icp_crop_half_size） -->
+    <model name="venue_walls">
+      <static>true</static>
+      <link name="north">
+        <pose>0 9.0 2.0 0 0 0</pose>
+        <collision name="c"><geometry><box><size>18.2 0.2 4.0</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>18.2 0.2 4.0</size></box></geometry>
+          <material><ambient>0.55 0.55 0.6 1</ambient><diffuse>0.55 0.55 0.6 1</diffuse></material></visual>
+      </link>
+      <link name="south">
+        <pose>0 -9.0 2.0 0 0 0</pose>
+        <collision name="c"><geometry><box><size>18.2 0.2 4.0</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>18.2 0.2 4.0</size></box></geometry>
+          <material><ambient>0.55 0.55 0.6 1</ambient><diffuse>0.55 0.55 0.6 1</diffuse></material></visual>
+      </link>
+      <link name="east">
+        <pose>9.0 0 2.0 0 0 0</pose>
+        <collision name="c"><geometry><box><size>0.2 18.2 4.0</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>0.2 18.2 4.0</size></box></geometry>
+          <material><ambient>0.55 0.55 0.6 1</ambient><diffuse>0.55 0.55 0.6 1</diffuse></material></visual>
+      </link>
+      <link name="west">
+        <pose>-9.0 0 2.0 0 0 0</pose>
+        <collision name="c"><geometry><box><size>0.2 18.2 4.0</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>0.2 18.2 4.0</size></box></geometry>
+          <material><ambient>0.55 0.55 0.6 1</ambient><diffuse>0.55 0.55 0.6 1</diffuse></material></visual>
+      </link>
+    </model>
+    <!-- 提供 /gazebo/set_entity_state（2026-10-04，爬楼梯回放 sim_climb_replay 用）。
+         平时不调用就没有开销 -->
+    <plugin name="gazebo_ros_state" filename="libgazebo_ros_state.so">
+      <ros>
+        <namespace>/gazebo</namespace>
+      </ros>
+      <update_rate>50</update_rate>
+    </plugin>
+  </world>
+</sdf>

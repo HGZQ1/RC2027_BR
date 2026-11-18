@@ -1,0 +1,56 @@
+# 交接区"TR 粗放、BR 雷达找块再捡"的仿真演示（2026-10-05）。配合：
+#   ros2 launch rc2027_sim_bridge sim_mapping.launch.py start_zone:=l1
+#   ros2 launch rc2027_perception block_detector.launch.py sim:=true
+#   ros2 run rc2027_utils sim_blocks --ros-args -p scene:=/workspace/sim_ws/src/rc2027_sim_bridge/config/block_scenes/transfer_trip1.yaml
+#   ros2 launch rc2027_decision flow.launch.py use_sim_time:=true flows:=<本文件>
+#   ros2 service call /flow_runner/start std_srvs/srv/Trigger
+#
+# 场景是 TR 第 1 趟（方案 2）："2 块叠" + "1 块单放"，故意放偏（几厘米、几度），示教拿取点按"本来想放的位置"录。
+# 流程：观察位停稳看 → 挑出那一摞 → 经过交接区入口 → 预备位姿 → ALIGN 到拿取位姿 → 假装拿 → 退回入口；再拿单块。
+# 假电控不会真的把方块拿走，所以第二次看的时候那一摞还在——按"找什么"挑，不会挑错。
+#
+# 为什么有 transfer_gate：point_navigator 走直线、先平移后转身。交接区只有 y -1.8～-0.8 跟 L1 连通，两头是 10 cm 高
+# 的围栏（Gazebo 网格查过），从观察位直接斜着开到预备位姿会擦到 (-3.0, -0.8) 那个围栏角
+main: pick_demo
+retry_flows:
+  l1: pick_demo
+flows:
+  pick_demo: |
+    CALL look
+    DETECT transfer_red stack transfer_stack
+    CALL pick_here
+    ACTION PICK 2
+    CALL back_out
+    CALL look
+    DETECT transfer_red ground transfer_single
+    CALL pick_here
+    ACTION PICK 1
+    CALL back_out
+
+  # 看之前先修一次定位：检测到的方块位置是按当前定位转到 map 的，定位偏多少方块就偏多少
+  look: |
+    NAV transfer_look
+    RELOCALIZE
+    WAIT 1                  # 停稳、攒几帧点云（检测用原始点云，没去畸变）
+
+  # **在预备位姿上停准 + 修定位，最后一段直接开进去，拿取位姿上不做 RELOCALIZE**（2026-10-05 用户仿真）：
+  # 车顶到方块跟前时方块挡掉雷达约 70% 的视野（雷达车头前倾，方块离它不到 10 cm），前后方向几乎没约束，
+  # Point-LIO 静止时 x 都在漂（1 cm/s 量级），这时候 relocalize 也不可信。预备位姿（再退 0.3 m）视野正常
+  pick_here: |
+    NAV transfer_gate
+    ALIGN @pick_pre
+    NAV @pick fine
+
+  # 拿完沿原路直着退回预备位姿再走：直接斜着开回入口，车头雷达会贴着方块侧面擦过去（host 几何检查最近 1.2 cm）
+  back_out: |
+    NAV @pick_pre
+    NAV transfer_gate
+
+# 仿真演示自带的点（红方，map 系；真车用 teach_point 录，点文件里同名的会覆盖这里的）。
+# 拿取点 = TR "本来想放的位置"按 gripper_offset 0.575 m（离方块面 15 cm）、从东面拿算出来的。
+# 观察位还是旧的（朝西南、ICP 两个方向都不够）；搭塔流程的观察位已经换了，见 two_towers_sim.yaml
+points:
+  transfer_look:   {x: -2.2,  y: 0.2,   theta: -2.3562}   # 东北 1.5 m 外，朝西南看交接区
+  transfer_gate:   {x: -2.30, y: -1.2,  theta: 3.1416}    # 在拿取位姿东边（原来 −2.75 会先开到比 15 cm 间隙更近）
+  transfer_stack:  {x: -3.125, y: -1.05, theta: 3.1416}   # 想放的 2 叠：(-3.70, -1.05)
+  transfer_single: {x: -2.675, y: -1.55, theta: 3.1416}   # 想放的单块：(-3.25, -1.55)

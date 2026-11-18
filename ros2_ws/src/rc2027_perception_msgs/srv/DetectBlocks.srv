@@ -1,0 +1,7 @@
+# 停稳后看一眼某个区域（Flow 里"到锚点 → 看 → 算拿取 / 放置位姿"用）
+string region           # spot_01..spot_10 / transfer_red / transfer_blue
+uint32 frames           # 用最近几帧点云，0 = 节点参数 frames
+---
+bool success            # false：区域名不对 / 没有点云 / 查不到 TF
+string message
+RegionState state

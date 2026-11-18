@@ -1,0 +1,21 @@
+# 按录好的点顺序自动跑（助教 10-04 提的 route runner），配 docs/field_data/sim_red.yaml（p1 p2 p3）。
+# route_runner 就是"只有 NAV 的流程"；顺序写在这里，不靠点文件里的顺序（teach_point 存点按键名排序）。
+#
+#   ros2 launch rc2027_decision flow.launch.py use_sim_time:=true
+#   ros2 service call /flow_runner/start std_srvs/srv/Trigger
+#   ros2 topic pub --once /flow_runner/run std_msgs/msg/String "{data: route_precise}"
+main: route
+retry_flows:
+  start: route            # 地面 Retry 后从头跑（p1～p3 都在地面上，没有 l1）
+flows:
+  route: |
+    NAV p1
+    NAV p2
+    NAV p3
+  # 拿 / 放前的"精确到位"：ALIGN = NAV（3 cm）→ RELOCALIZE → NAV fine（1 cm / 1°），再做假动作
+  route_precise: |
+    ALIGN p1
+    ACTION PICK 1
+    ALIGN p2
+    ACTION PLACE 1
+    NAV p3

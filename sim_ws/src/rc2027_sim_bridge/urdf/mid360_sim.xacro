@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Mid-360 仿真雷达宏——从 ros2_livox_simulation 的 urdf/mid360.xacro 抄过来改的
+  （2026-10-04），插件本身（libros2_livox.so、扫描模式 CSV）还是用 vendor 包里的。
+
+  为什么不直接用 vendor 的宏：它把 samples=40000、laser_max_range=200 写成了文件级
+  property，改就得动 vendor 文件。助教实测 gzserver 单线程跑满、RTF 只有 0.56，大头
+  是这 4 万条射线（每帧）——真机 Mid-360 是 20 万点/秒，10 Hz 时每帧约 2 万点，原设置
+  是真机的 2 倍。所以这里把它们做成宏参数，默认值按真机：
+
+    samples    20000  （每帧射线数 = 每帧点数）
+    max_range  40.0   （真机标称 40 m @10% 反射率；场地对角线才 17 m）
+    update_rate 10    （跟真机一致）
+
+  另外 sensor 的 <visualize> 改成 false：原来是 true，gzclient 要把每条射线画出来，
+  白白吃 CPU/显卡。**同时必须加 <always_on>true</always_on>**，原因见 sensor 那里的注释
+  （第一次改的时候漏了，雷达直接不出数据）。
+
+  其余（扫描模式、噪声、最小量程 0.1 m、话题）跟 vendor 原版一致。
+-->
+<robot xmlns:xacro="http://ros.org/wiki/xacro">
+
+  <xacro:macro name="mid360_sim"
+               params="name parent:='base_link' topic:='mid360' samples:=20000 max_range:=40.0 update_rate:=10 *origin">
+
+    <link name="${name}">
+      <inertial>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <mass value="0.1"/>
+        <inertia ixx="0.0001" ixy="0" ixz="0" iyy="0.0001" iyz="0" izz="0.0001"/>
+      </inertial>
+      <visual>
+        <geometry>
+          <box size="0.1 0.06 0.06"/>
+        </geometry>
+      </visual>
+    </link>
+
+    <joint name="${name}_joint" type="fixed">
+      <parent link="${parent}"/>
+      <child link="${name}"/>
+      <xacro:insert_block name="origin"/>
+    </joint>
+
+    <gazebo reference="${name}">
+      <sensor type="ray" name="${name}">
+        <pose>0 0 0 0 0 0</pose>
+        <!-- always_on 必须是 true（2026-10-04 踩的坑）：Gazebo Classic 的 RaySensor::IsActive()
+             = always_on || 自己的 gz 扫描话题有订阅者。vendor 原版没写 always_on，全靠
+             visualize=true 让 gzclient 订阅来画射线才"碰巧"在更新——把 visualize 关掉、或者
+             gui:=false 不开 gzclient，雷达就一帧都不出，Point-LIO 卡在等数据 -->
+        <always_on>true</always_on>
+        <visualize>false</visualize>
+        <update_rate>${update_rate}</update_rate>
+        <plugin name="${name}_plugin" filename="libros2_livox.so">
+          <ray>
+            <scan>
+              <horizontal>
+                <samples>100</samples>
+                <resolution>1</resolution>
+                <min_angle>0</min_angle>
+                <max_angle>${2 * pi}</max_angle>
+              </horizontal>
+              <vertical>
+                <samples>360</samples>
+                <resolution>1</resolution>
+                <min_angle>${-7.22 / 180 * pi}</min_angle>
+                <max_angle>${55.22 / 180 * pi}</max_angle>
+              </vertical>
+            </scan>
+            <range>
+              <min>0.1</min>
+              <max>${max_range}</max>
+              <resolution>0.002</resolution>
+            </range>
+            <noise>
+              <type>gaussian</type>
+              <mean>0.0</mean>
+              <stddev>0.01</stddev>
+            </noise>
+          </ray>
+          <visualize>false</visualize>
+          <samples>${samples}</samples>
+          <downsample>1</downsample>
+          <csv_file_name>$(find ros2_livox_simulation)/scan_mode/mid360.csv</csv_file_name>
+          <topic>${topic}</topic>
+        </plugin>
+      </sensor>
+    </gazebo>
+  </xacro:macro>
+
+</robot>

@@ -1,0 +1,8 @@
+# 试验 B 的同一份数。现在已经写进 point_navigator_sim.yaml，启动会读那份。
+# 直线 1.0 m/s、线加速度 2.0、线减速 1.6。角速度留在 1.0 rad/s。
+point_navigator:
+  ros__parameters:
+    max_linear_speed: 1.0           # m/s
+    max_angular_speed: 1.0          # rad/s，稳定底线，不往上加
+    max_linear_accel: 2.0           # m/s²
+    linear_decel: 1.6               # m/s²

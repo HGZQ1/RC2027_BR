@@ -1,0 +1,29 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>rc2027_navigation</name>
+  <version>0.0.1</version>
+  <description>定位链路：lio_to_base（Point-LIO 位姿换成车体位姿）、field_localizer（map -&gt; lidar_odom、Retry、先验地图 ICP 精修）、point_navigator（点到点导航）</description>
+  <maintainer email="wdsj2009.2006101@gmail.com">rc2027</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <depend>rclcpp</depend>
+  <depend>tf2</depend>
+  <depend>tf2_ros</depend>
+  <depend>nav_msgs</depend>
+  <depend>nav2_msgs</depend>
+  <depend>rclcpp_action</depend>
+  <depend>geometry_msgs</depend>
+  <depend>std_msgs</depend>
+  <depend>std_srvs</depend>
+  <depend>rc2027_navigation_msgs</depend>
+  <depend>yaml-cpp</depend>
+  <depend>sensor_msgs</depend>
+  <depend>eigen</depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

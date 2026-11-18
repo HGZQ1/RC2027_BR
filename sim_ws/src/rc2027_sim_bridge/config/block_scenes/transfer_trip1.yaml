@@ -1,0 +1,20 @@
+# 交接区 TR 第 1 趟（方案 2）："2 块叠" + "1 块单放"，故意放偏（2026-10-05）。
+# 配 rc2027_decision/config/flows/transfer_pick_demo.yaml（BR 雷达找块再捡的演示），说明见那个文件开头。
+# 本来想放：2 叠 (-3.70, -1.05)、单块 (-3.25, -1.55)，都正着放；实际偏了几厘米、转了几度。两块之间最近处 ≥ 10 cm。
+# 转角的方向有讲究：车按方块的面去拿，2 叠转 -7° 时预备位姿往东南偏，离 (-3.0, -0.8) 的围栏角远一些
+z_offset: 0.05
+stacks:
+  - region: transfer_red
+    dx: -0.22             # (-3.72, -1.05)
+    dy: 0.25
+    blocks: [ground, ground]
+    yaw_deg: -7
+  - region: transfer_red
+    dx: 0.25              # (-3.25, -1.55)
+    dy: -0.25
+    blocks: [ground]
+    yaw_deg: -12
+
+views:
+  - {go: [-1.8, 2.6, 180]}
+  - {go: [-2.2, 0.2, -135], look: [transfer_red]}

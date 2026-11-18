@@ -1,0 +1,20 @@
+# 搭两座塔端到端仿真（方案 2：近点先封顶），2026-10-05。配 rc2027_decision/config/flows/two_towers_sim.yaml，
+# 用 sim_tower 节点（假电控 + TR）跑：它开局摆第 1 趟，交接区被拿空以后摆下一趟（模拟 TR 送货），
+# PICK / PLACE 时真的挪 Gazebo 里的方块。说明见那个流程文件开头。
+#
+# TR 每趟都想放在同样两个位置：一摞放 (-3.70, -1.15)、单块放 (-3.25, -1.55)，都正着放；实际偏几厘米、转几度。
+# 一摞比 transfer_trip1 往南挪了 10 cm：放歪成 +6° 时车要从东北斜着进去拿，预备位姿会顶到交接区北边 (-3.0, -0.8)
+# 的围栏角（host 几何检查只剩 0.2 cm）
+z_offset: 0.05
+trips:
+    # 第 1 趟：远处一块地 + 近处两地一摞。近的先拿。真比赛也按这个约定
+    - - {region: transfer_red, dx: -0.22, dy: 0.15, blocks: [ground], yaw_deg: -7}
+      - {region: transfer_red, dx: 0.25, dy: -0.25, blocks: [ground, ground], yaw_deg: -12}
+    # 第 2 趟：地 + 天一摞（天空块本方颜色朝上）+ 1 天单放
+    - - {region: transfer_red, dx: -0.18, dy: 0.17, blocks: [ground, sky], yaw_deg: 6}
+      - {region: transfer_red, dx: 0.22, dy: -0.23, blocks: [sky], yaw_deg: 15}
+    # 第 3、4 趟：和第 1、2 趟同一套货。奇数趟远处一块、近处两地；偶数趟地天。四趟 8 地 4 天
+    - - {region: transfer_red, dx: -0.20, dy: 0.16, blocks: [ground], yaw_deg: 5}
+      - {region: transfer_red, dx: 0.24, dy: -0.22, blocks: [ground, ground], yaw_deg: 8}
+    - - {region: transfer_red, dx: -0.16, dy: 0.14, blocks: [ground, sky], yaw_deg: -5}
+      - {region: transfer_red, dx: 0.26, dy: -0.20, blocks: [sky], yaw_deg: -9}

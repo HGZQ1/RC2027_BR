@@ -1,0 +1,30 @@
+# 2026-10-11 调速前的仿真参数，原样留下。恢复时用这份覆盖 point_navigator_sim.yaml。
+#
+# 仿真启动时，navigation.launch.py 先读 point_navigator.yaml，再用本文件盖掉同名项。
+# 当时本文件只盖了两项，其余用底盘那份的起点值。下面是当时生效的全套。
+#
+# 来自 point_navigator.yaml（没被盖掉）：
+#   max_linear_speed 的底盘默认是 1.0，仿真盖成 0.5
+#   max_angular_speed 的底盘默认是 2.0，仿真盖成 1.0
+#   min_linear_speed: 0.03
+#   min_angular_speed: 0.05
+#   kp_linear: 1.5
+#   kp_angular: 2.0
+#   kp_hold: 1.0
+#   max_hold_speed: 0.2
+#   linear_decel: 0.8
+#   angular_decel: 3.0
+#   max_linear_accel: 1.0
+#   max_angular_accel: 4.0
+#   xy_tolerance: 0.03
+#   yaw_tolerance: 0.03
+#   goal_timeout: 30.0
+#   stuck_timeout: 5.0
+#   progress_min_delta: 0.02
+#   max_pushes: 3
+#   rotate_timeout: 8.0
+#   control_rate: 20.0
+point_navigator:
+  ros__parameters:
+    max_linear_speed: 0.5           # m/s（真车默认 1.0）
+    max_angular_speed: 1.0          # rad/s（真车默认 2.0）

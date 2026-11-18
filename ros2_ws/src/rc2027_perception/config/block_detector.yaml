@@ -1,0 +1,17 @@
+# block_detector 参数（2026-10-04，起点值）
+block_detector:
+  ros__parameters:
+    field_geometry_path: /workspace/docs/rules/field_geometry.yaml
+    map_frame: map
+    sensor_frame: lidar_link
+    # 雷达原始点云（不能用 Point-LIO 的 /cloud_registered：0.2 m 体素降采样过，见节点开头注释）。
+    # 用 cloud_crop 裁掉车体 + 货仓以后的那一路（真车 / 仿真一样；仿真不开裁剪框时改成 /livox/lidar_PointCloud2）
+    cloud_topic: /cloud_crop/points
+    min_range: 0.3                # m，雷达附近的点（车自己、货）不要
+    frames: 5                     # 用最近几帧（10 Hz → 0.5 s，仿真每帧 20000 点）
+    surface_z_offset: 0.0         # 仿真 launch 传 sim:=true 时覆盖成 0.05
+    spot_half_size: 0.40          # 建造点 500x500，往外多看 15 cm（方块可能伸出去）
+    transfer_inset: 0.02          # 交接区往里缩 2 cm，不要台面边缘
+    max_view_elevation_deg: 22.0  # 前倾 30° 的 Mid-360 正前方往上能看到的角度
+    scan_rate: 1.0                # 定时扫 Hz，0 = 只用服务
+    scan_regions: [""]            # 空 = 全部区域

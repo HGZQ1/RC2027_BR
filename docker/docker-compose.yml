@@ -1,0 +1,92 @@
+# 本地开发用 compose 文件。
+#
+# 两个服务 tr / br 对应规则 11.10："TR 和 BR 比赛中禁止互相通信"——
+# 用不同的 ROS_DOMAIN_ID 从基础设施层面强制隔离两车的 DDS 通信域，
+# 不依赖"大家约定好不写重叠话题名"这种人工保证。
+#
+# 当前阶段只用 br（雷达定位在 BR 上），tr 服务先占位，内容和 br 一样，
+# 等 TR 那边开始写代码再拆分成自己的 Dockerfile/挂载路径。
+
+services:
+  br:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      args:
+        # 默认不装 PyTorch（离线安装机制见 docker/README.md），需要时：
+        #   docker compose build br --build-arg INSTALL_PYTORCH=true
+        INSTALL_PYTORCH: "false"
+        # 下面两个保持默认即可，列出来只是方便知道有这个开关、改的时候不用去翻 Dockerfile：
+        # GPU_SERIES: "40"       # 40=稳定版cu126（默认） / 50=nightly cu128
+        # REALSENSE_VERSION: "2.56.4"   # librealsense 源码版本，docker_deps/ 里本地有 2.56.2/2.56.4 两份
+    image: rc2027:br-dev
+    container_name: rc2027_br
+    environment:
+      - ROS_DOMAIN_ID=2
+      - RCUTILS_COLORIZED_OUTPUT=1
+      # rviz2 是 Qt/OpenGL 图形程序，要显示在宿主机屏幕上，靠这两个 + 下面
+      # 的 /tmp/.X11-unix 挂载做 X11 转发（跟去年 run_docker_ros2.sh 的
+      # setup_x11() 是同一套做法）。宿主机那边运行容器前先执行一次：
+      #   xhost +local:docker
+      # 不执行这一步，rviz2 启动时会报 "无法连接到显示" 之类的错误。
+      - DISPLAY=${DISPLAY}
+      - QT_X11_NO_MITSHM=1
+    network_mode: host   # 雷达走 UDP 组播/固定端口，host 模式避免被 NAT/bridge 网络挡住
+    privileged: true      # 开发阶段先给全权限访问串口/USB/摄像头设备，上车前应收紧成具体映射
+    # ── 相机设备映射（预留，暂不启用视觉识别）──
+    #   privileged: true 已经能访问宿主机全部设备，下面这些显式映射现在是多余的；
+    #   留着是给"以后关掉 privileged、改成最小权限"时抄的参考，到时候删掉上面
+    #   privileged 那行，把这几行取消注释，并按实际设备号改成真实路径。
+    # devices:
+    #   - /dev/video0:/dev/video0        # UVC 摄像头（ls /dev/video* 确认实际编号）
+    #   - /dev/bus/usb:/dev/bus/usb      # RealSense D435i 走 USB，不是标准 v4l2 设备
+    # group_add:
+    #   - video
+    #   - plugdev
+    volumes:
+      # 本地开发：把源码挂进去，改代码不用重新 build 镜像，
+      # 容器里手动 colcon build --packages-select <包名> 增量编译即可
+      - ../ros2_ws/src:/opt/ros2_ws/src
+      - ../external_ws/src:/opt/external_ws/src
+      - /tmp/.X11-unix:/tmp/.X11-unix   # rviz2 的 X11 转发，见上面 environment 里的说明
+      # 【2026-10-02 助教那边实机踩的坑】：privileged: true 只在"容器启动那一刻"
+      # 把宿主机 /dev 下的设备节点复制一份进容器，之后才插上的 USB 设备（相机、
+      # 以后的下位机串口）不会自动出现，容器里报 NO_DEVICE。把整个 /dev 直接
+      # 挂进去（而不是复制一份快照），设备节点就是宿主机那一份本身，插拔能
+      # 实时反映到容器里，不用重启容器。这是 ROS 开发容器处理热插拔的常见做法，
+      # 跟上面的 privileged 是配套的；以后收紧权限、去掉 privileged 时，
+      # 这行也要跟着去掉，换成上面注释掉的 device_cgroup_rules 那种精确授权方式。
+      - /dev:/dev
+      # 整个仓库根目录也挂一份，给 VS Code Dev Containers 用（见
+      # ../.devcontainer/devcontainer.json）——这样 VS Code 里能看到
+      # ros2_ws/external_ws/sim_ws/docs 等全部内容，不只是源码那两个子目录。
+      # 跟上面两条挂载指向同一份宿主机文件，改哪边都是改同一个文件，不会不同步。
+      - ..:/workspace
+    stdin_open: true
+    tty: true
+    # 用 sleep infinity 而不是 bash：保证容器在没有人 attach 终端的情况下
+    # 也能一直活着（VS Code/手动 exec 都是另开一个连接进来，不依赖这个
+    # 主进程是不是 bash）。进去调试还是用 docker compose exec br bash。
+    command: sleep infinity
+
+  tr:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      args:
+        INSTALL_PYTORCH: "false"
+    image: rc2027:tr-dev
+    container_name: rc2027_tr
+    environment:
+      - ROS_DOMAIN_ID=1
+      - RCUTILS_COLORIZED_OUTPUT=1
+    network_mode: host
+    privileged: true
+    volumes:
+      - ../ros2_ws/src:/opt/ros2_ws/src
+      - ../external_ws/src:/opt/external_ws/src
+      - ..:/workspace
+      - /dev:/dev   # 同 br，热插拔设备（以后的下位机串口等）实时可见，见上面 br 的说明
+    stdin_open: true
+    tty: true
+    command: sleep infinity

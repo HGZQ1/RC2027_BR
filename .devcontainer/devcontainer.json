@@ -1,0 +1,42 @@
+// VS Code Dev Containers 配置。
+// 装好 "Dev Containers" 这个扩展（ms-vscode-remote.remote-containers）之后，
+// 用 VS Code 打开 rc2027 这个文件夹，右下角会弹出 "在容器中重新打开"；
+// 也可以手动：命令面板(Ctrl+Shift+P) -> "Dev Containers: Reopen in Container"。
+//
+// 复用的是 docker/docker-compose.yml 里已有的 br 服务，不是另起一套配置——
+// 跟手动 `docker compose up br` 起的是同一个容器定义，镜像、依赖、patch
+// 全部一致，不会出现"VS Code 里能跑、命令行跑不起来"这种双重维护的问题。
+{
+  "name": "RC2027 (BR)",
+  "dockerComposeFile": ["../docker/docker-compose.yml"],
+  "service": "br",
+  // 只启动 br，不会因为打开 VS Code 就顺带把 tr 也跑起来
+  "runServices": ["br"],
+  // 对应 docker-compose.yml 里新加的 "..:/workspace" 挂载，显示整个仓库
+  // （ros2_ws / external_ws / sim_ws / docs / docker 全部可见），不只是源码子目录
+  "workspaceFolder": "/workspace",
+  // 容器本来就常驻（command: sleep infinity），VS Code 退出时不要把它关掉，
+  // 下次打开还能接着用同一个容器，缓存的 colcon build 产物也还在
+  "shutdownAction": "none",
+  "remoteUser": "root",
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-vscode.cpptools",
+        "ms-python.python",
+        "ms-iot.vscode-ros",
+        "redhat.vscode-yaml",
+        "xaver.clang-format"
+      ],
+      "settings": {
+        // 容器里已经装了 clang-format 不是必须，但这两条让它不要瞎报 include 找不到
+        "C_Cpp.default.compilerPath": "/usr/bin/g++"
+      }
+    }
+  },
+
+  // 每次容器(重新)启动都执行一次：提醒 rviz2 要用的 X11 授权，
+  // 这个必须在"宿主机"执行，容器里提醒一下免得忘了
+  "postStartCommand": "echo '[devcontainer] 如果要用 rviz2，记得在宿主机（不是这个容器里）执行过一次: xhost +local:docker'"
+}

@@ -1,0 +1,12 @@
+# point_navigator 的第二个目标入口（决策层 Flow 引擎用），2026-10-04 加。
+# 比 nav2_msgs/NavigateToPose 多了"每个目标自己的到位门限"：普通走点用节点参数（3 cm），
+# 拿 / 放前最后一步要更严（1～1.5 cm、1°，见 0002 10-04 "拿放动作组写死，上位机只负责停准"）。
+geometry_msgs/PoseStamped pose   # frame_id 必须是 map（或空）
+float32 xy_tolerance             # m，<= 0 用节点参数 xy_tolerance
+float32 yaw_tolerance            # rad，<= 0 用节点参数 yaw_tolerance
+---
+string outcome                   # ARRIVED / TIMEOUT / STUCK / PAUSED / PREEMPTED / CANCELED
+float32 distance_remaining       # m
+---
+geometry_msgs/PoseStamped current_pose
+float32 distance_remaining       # m

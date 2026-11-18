@@ -1,0 +1,5 @@
+string zone        # "start" 或 "l1"
+string start_box   # zone=="start" 时选 "box_a"/"box_b"；留空用节点启动时的默认值
+---
+bool success
+string message

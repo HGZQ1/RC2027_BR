@@ -1,0 +1,52 @@
+# 红方 L1 上摆方块，测雷达方块检测（2026-10-04）。配合：
+#   ros2 launch rc2027_sim_bridge sim_mapping.launch.py start_zone:=l1    # 车直接放在 L1 Retry Zone（朝南）
+#   ros2 launch rc2027_perception block_detector.launch.py sim:=true
+#   ros2 run rc2027_utils sim_blocks                                      # 摆方块
+#   ros2 run rc2027_utils sim_blocks --ros-args -p mode:=check            # 按 views 开过去看、跟真值比
+#
+# 摆了什么：spot_03 完整的塔（每层有错位）、spot_02 一块地块、L2 的 spot_05 一块地块、
+# 交接区"2 块叠 + 1 块单放 + 1 块天空块"（最近处缝 ≥ 8 cm，从视点看互不遮挡）
+z_offset: 0.05
+stacks:
+  - region: spot_03
+    dx: 0.02
+    dy: -0.01
+    blocks: [ground, ground, sky]
+    yaw_deg: [3, -4, 10]
+    offsets: [[0, 0], [0.02, 0.01], [-0.01, 0.0]]
+  - region: spot_02
+    dx: 0.03
+    dy: 0.0
+    blocks: [ground]
+    yaw_deg: 8
+  - region: spot_05
+    blocks: [ground]
+    yaw_deg: -5
+  - region: transfer_red
+    dx: -0.2
+    dy: 0.2
+    blocks: [ground, ground]
+    yaw_deg: 5
+  # 单放的地块、天空块沿"跟视线垂直"的方向错开摆（视点在东北，朝西南看）：原来天空块摆在 (-3.5, -1.55)，
+  # 整个藏在单放地块后面，check 报"没找到"（2026-10-05）。现在每两块之间最近处 ≥ 8 cm
+  - region: transfer_red
+    dx: 0.2
+    dy: -0.2
+    blocks: [ground]
+    yaw_deg: -10
+  - region: transfer_red
+    dx: 0.2
+    dy: 0.28
+    blocks: [sky]
+    yaw_deg: 20
+
+# check 模式按顺序开到这些位姿（x, y, yaw_deg；point_navigator 走直线，所以中间加了过路点绕开 L2 和
+# 它的楼梯），在 look 的位姿停稳后看这些区域。前倾 30° 的雷达正前方最多往上看 22°，看完整的塔要离 2 m 左右
+views:
+  # 先在 Retry Zone 原地转向（原来第一个点是 (-2.4, 2.6)，离 spot_03 的塔只有 0.27 m，车侧面顶上塔 STUCK——助教 10-05）
+  - {go: [-1.8, 2.6, 180]}
+  - {go: [-0.4, 2.6, 180], look: [spot_03]}
+  - {go: [-1.6, 2.6, 0], look: [spot_02]}
+  - {go: [-2.4, 2.0, 0]}
+  - {go: [-2.75, 1.25, 0], look: [spot_05]}
+  - {go: [-2.2, 0.2, -135], look: [transfer_red]}
