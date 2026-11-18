@@ -14,4 +14,5 @@ actions:
   CLIMB_L2:      {id: 5, duration: 1.0}    # 上楼。机构还没有，仿真和真代码都是直接换位
   CLIMB_DOWN:    {id: 8, duration: 1.0}    # 下楼。同样直接换回 L1 楼梯口，不开下台阶
   PLACE_MUSTIKA: {id: 6, duration: 3.0}
+  PLACE_ONE:     {id: 9, duration: 3.0}    # 仿真占位：只放最上面一块，param 仍是目标层
   RELEASE_ALL:   {id: 7, duration: 1.0}    # 比赛结束前松手

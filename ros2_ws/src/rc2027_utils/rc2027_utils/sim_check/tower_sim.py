@@ -87,7 +87,7 @@ class TowerWorld:
         self.carried = [b.name for b in col[-n:]]
         return ''
 
-    def place(self, robot, level, rng: random.Random, sigma_xy=0.01, sigma_yaw_deg=1.0) -> str:
+    def place(self, robot, level, rng: random.Random, sigma_xy=0.01, sigma_yaw_deg=1.0, *, one=False) -> str:
         """放到夹爪前面那个位置的第 level 层（1 = 台面上）。放的高度跟那里已有的层数对不上就失败（真车会砸）。"""
         if not self.carried:
             return '手里没有方块'
@@ -104,7 +104,7 @@ class TowerWorld:
         yaw = robot[2] + math.radians(rng.gauss(0, sigma_yaw_deg))
         z = base + height
         # 塔已经两层，手里却是「地+天」。地放上去会变成三层，只把顶上的天空盖上，地留在手里。
-        names = list(self.carried)
+        names = self.carried[-1:] if one else list(self.carried)
         tops = [self.blocks[n] for n in names]
         grounds = sum(b.kind == 'ground' for b in col)
         if len(tops) == 1 and tops[0].kind == 'sky' and grounds < 2:
@@ -112,9 +112,9 @@ class TowerWorld:
         if (len(col) >= 2 and len(tops) >= 2 and tops[-1].kind == 'sky'
                 and any(b.kind == 'ground' for b in tops[:-1])):
             names = names[-1:]
-            self.carried = self.carried[:-1]
-        else:
-            self.carried = []
+        if grounds + sum(self.blocks[n].kind == 'ground' for n in names) > 2:
+            return '地块最多两层'
+        self.carried = self.carried[:-len(names)]
         for name in names:
             b = self.blocks[name]
             # 整摞放：上面那块相对下面那块再抖几毫米

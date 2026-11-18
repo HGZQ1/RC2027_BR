@@ -356,7 +356,7 @@ class FlowRunner(TaskExecutor):
             return 'cap', 2
         if self.planned.action == PLACE_SKY:
             return 'sky', 1
-        return 'ground', self.planned.count
+        return 'ground', self.planned.pick_count or self.planned.count
 
     def on_spot_check(self, res, step, token):
         """放到跟前再看一眼。和出发时不一样就丢掉后面的放置，重选。"""
@@ -434,10 +434,10 @@ class FlowRunner(TaskExecutor):
             return
         spot = self.planned.spot
         current = self.memory.get(spot, Tower(seen=True))
-        if self.step.step.name == 'PLACE' and self.planned.action == PLACE_GROUND:
+        if self.step.step.name in ('PLACE', 'PLACE_ONE') and self.planned.action == PLACE_GROUND:
             self.memory[spot] = replace(
-                current, ground=current.ground + self.planned.count, seen=True)
-        elif self.step.step.name == 'PLACE' and self.planned.action == PLACE_SKY:
+                current, ground=max(current.ground, self.planned.assumed_ground or 0) + self.planned.count, seen=True)
+        elif self.step.step.name in ('PLACE', 'PLACE_ONE') and self.planned.action == PLACE_SKY:
             ground = current.ground + 1 if self.planned.count == 2 else max(current.ground, 2)
             self.memory[spot] = replace(current, ground=ground, sky_owner=SKY_OURS, seen=True)
         elif self.step.step.name == 'FLIP_SKY':

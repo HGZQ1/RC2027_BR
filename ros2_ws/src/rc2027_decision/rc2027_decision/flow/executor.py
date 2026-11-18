@@ -11,8 +11,7 @@ from std_srvs.srv import SetBool, Trigger
 from .engine import DONE, FAILED, RUNNING
 from .pick_pose import Block as PickBlock, choose
 from .steps import Action, Detect, Nav, Realign, Relocalize, Verify, Wait, WaitAfterCorrection
-from ..world.field_model import SKY_OURS
-from ..world.planner import (PLACE_SKY, _pick_how, carry_choice, pickable_goods,
+from ..world.planner import (PLACE_SKY, nearest_transfer_blocks, _pick_how, carry_choice, pickable_goods,
                              trusted_transfer_blocks)
 
 
@@ -261,28 +260,22 @@ class TaskExecutor(Node):
             # 顶出了视场还报一块地：上面可能是没看见的天。按这块地去拿会把天揭下来。
             clipped_ground = (step.slot == 'pick' and step.what == 'ground'
                               and res.state.top_maybe_clipped)
-            # 准备拿地+天时，眼前还有单块天，南边自己的塔又差天：先拿天，地+天留着。
-            if (self.planner and step.slot == 'pick' and self.planned is not None
-                    and self.planned.action == PLACE_SKY and self.planned.count == 2
-                    and self.planned.spot != 'spot_07'):
-                seen_goods = pickable_goods(blocks)
-                own = self.memory.get('spot_07') or self.world_view()[0]['spot_07']
-                if (seen_goods.sky - seen_goods.cap_stack >= 1 and own.ground >= 2
-                        and own.sky_owner != SKY_OURS):
-                    self.get_logger().warn(
-                        '交接区还有单块天空，先盖南边自己的塔，地+天先留着')
-                    self.plan_and_run(blocks=blocks)
+            eligible = None
+            if self.planner and step.slot == 'pick' and self.planned is not None:
+                fresh = trusted_transfer_blocks(blocks, res.state.top_maybe_clipped)
+                eligible = nearest_transfer_blocks(fresh)
+                how = _pick_how(fresh, 'sky' if self.planned.action == PLACE_SKY else 'ground',
+                                self.planned.pick_count or self.planned.count)
+                if how is None and eligible:
+                    self.get_logger().info('近侧货物已变化，在交接区重新选塔')
+                    self.replan_after_observation(fresh)
                     return
-            # 只盖一块天空时，眼前有单块天空就拿它，不拆旁边的地天摞
-            if (self.planner and step.slot == 'pick' and self.planned is not None
-                    and self.planned.action == PLACE_SKY and self.planned.count == 1):
-                how = _pick_how(blocks, 'sky', 1)
-                if how is not None and how[0] == 'sky':
-                    what, nominal = 'sky', self.points[how[1]]
+                if how:
+                    what, nominal = how[0], self.points[how[1]]
             if clipped_ground:
                 result, why = None, '顶部出视场，这块地上面可能还有天空，先不拿'
             else:
-                result, why = choose(blocks, what, nominal, self.pick_params)
+                result, why = choose(blocks, what, nominal, self.pick_params, eligible=eligible)
         else:
             result, why = None, res.message
         if result is not None:
@@ -441,7 +434,7 @@ class TaskExecutor(Node):
             name = self.step.step.name
             if name == 'PICK' and self.planned is not None:
                 self.held_kind, self.held_n = self._held_load()
-            if name == 'PLACE' and self.planned is not None and self.held_n > self.planned.count:
+            if name in ('PLACE', 'PLACE_ONE') and self.planned is not None and self.held_n > self.planned.count:
                 self.held_n -= self.planned.count
                 self.held_kind = 'ground'
                 towers, _, _ = self.world_view()
@@ -449,10 +442,10 @@ class TaskExecutor(Node):
                 if alt is None:
                     self.fail(self.token, '手里还剩一块地，没有塔能放')
                     return
-                self.get_logger().info('天空已经盖上，手里还剩一块地：' + alt.line())
+                self.get_logger().info('本塔已放好，手里还剩一块地：' + alt.line())
                 self.plan_and_run(holding=True, choice=alt)
                 return
-            if name == 'PLACE':
+            if name in ('PLACE', 'PLACE_ONE'):
                 self.held_kind, self.held_n = None, 0
             if name == 'CLIMB_L2':
                 self._lock_after_climb()

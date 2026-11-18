@@ -67,7 +67,9 @@ class Choice:
     pose: Optional[Tuple[float, float, float]] = None
     assumed_ground: Optional[int] = None    # 出发时这个点有几层地。开到跟前对不上就重选
     assumed_sky: Optional[str] = None
-    count: int = 1                          # 这次拿几块。2 = 整摞（两地，或一地加天空）
+    count: int = 1                          # 本塔放置数量
+
+    pick_count: Optional[int] = None          # 分摞时实际夹取的数量，count 是本塔放置数量
 
     def line(self):
         """一行字，给脚本打印。"""
@@ -225,6 +227,12 @@ def _place_from_goods(towers, goods, at, look):
         return None
 
     def place(kind, name, tower):
+        if kind == 'split':
+            other = carry_choice(towers, 'ground', avoid=name)
+            n = 2 if other else 1
+            why = f'近处两地，拿两块，本塔放一块，余地可放 {other.spot}' if other else '近处两地，取顶上一块补第二层'
+            return Choice(PLACE_GROUND, name, why, at(name, 'place'), tower.ground,
+                          tower.sky_owner, count=1, pick_count=n)
         if kind == 'stack':
             return Choice(PLACE_GROUND, name, '交接区有两块地一摞，一次拿两块地',
                           at(name, 'place'), tower.ground, tower.sky_owner, count=2)
@@ -250,6 +258,8 @@ def _place_from_goods(towers, goods, at, look):
             return 'cap'
         if 'sky' in have and _accepts(tower, 'sky'):
             return 'sky'
+        if 'stack' in have and tower.ground == 1:
+            return 'split'
         if 'ground' in have and _accepts(tower, 'ground'):
             return 'ground'
         return None
@@ -360,10 +370,10 @@ def choose(towers: Mapping[str, Tower], goods: Goods = Goods(),
     if not _l2_done(towers):
         for name in OWN_BUILD_ORDER:
             tower = towers.get(name, Tower(seen=True))
+            if name in L2_OURS and _unclear(tower):
+                continue  # 看不清时先处理楼下可做的任务。
             if tower.sky_owner == SKY_OTHERS:
                 if name in L2_OURS:
-                    if _unclear(tower):
-                        return look(name, '确认 L2 自己塔的塔顶')
                     return Choice(FLIP, name, '翻回 L2 自己塔的天空', at(name, 'place'),
                                   tower.ground, tower.sky_owner)
                 continue
@@ -476,9 +486,12 @@ def carry_choice(towers: Mapping[str, Tower], kind: str,
             amount = 2 if load in ('stack', 'cap') else 1
             return Choice(action, name, f'改放手里的货到 {name}', at(name, 'place'),
                           tower.ground, tower.sky_owner, count=amount)
+        if load == 'stack' and tower.ground == 1 and split is None:
+            split = Choice(PLACE_GROUND, name, '手里两地，本塔放一块', at(name, 'place'),
+                           tower.ground, tower.sky_owner, count=1, pick_count=2)
         if kind == 'cap' and tower.ground >= 2:
             partial = Choice(PLACE_SKY, name, f'{name} 已经两层，先盖天空，地留着',
-                             at(name, 'place'), tower.ground, tower.sky_owner)
+                             at(name, 'place'), tower.ground, tower.sky_owner, pick_count=2)
             if name in MANDATE:
                 return partial
             if split is None:
@@ -523,14 +536,14 @@ def after_changed_look(planned: Choice, new: Choice, towers: Mapping[str, Tower]
     """
     if held_n <= 0:
         return 'empty', new
-    if planned.action == PLACE_SKY and planned.count == 2:
+    if planned.action == PLACE_SKY and held_n == 2:
         held, n = 'cap', 2
     elif planned.action == PLACE_SKY:
         held, n = 'sky', 1
     else:
-        held, n = 'ground', planned.count
+        held, n = 'ground', held_n
     same = (
-        (held == 'ground' and new.action == PLACE_GROUND and new.count == n)
+        (held == 'ground' and new.action == PLACE_GROUND and (new.pick_count or new.count) == n)
         or (held == 'sky' and new.action == PLACE_SKY and new.count == 1)
         or (held == 'cap' and new.action == PLACE_SKY and new.count == 2))
     if same:
@@ -549,9 +562,13 @@ def apply_choice(towers: Dict[str, Tower], goods: Goods, choice: Choice):
         n = choice.count
         towers[choice.spot] = replace(
             towers[choice.spot], ground=towers[choice.spot].ground + n)
-        goods = replace(
-            goods, ground=goods.ground - n,
-            ground_stack=max(0, goods.ground_stack - (1 if n == 2 else 0)))
+        picked = choice.pick_count or n
+        if picked > n:
+            other = carry_choice(towers, 'ground', avoid=choice.spot)
+            if other:
+                towers[other.spot] = replace(towers[other.spot], ground=towers[other.spot].ground + 1)
+        goods = replace(goods, ground=goods.ground - picked,
+                        ground_stack=max(0, goods.ground_stack - int(picked == 2 or choice.pick_count == 1)))
     elif choice.action == PLACE_SKY and choice.count == 2:
         towers[choice.spot] = replace(
             towers[choice.spot], ground=towers[choice.spot].ground + 1, sky_owner=SKY_OURS)
@@ -615,7 +632,6 @@ def _closer_to_the_field(stacks):
     """多摞都在时，先只看最靠近内场（x 更大，离西边外沿更远）的那摞。
 
     先拿外面那摞要开到北栏杆边上。里面那块拿走之后，外面的再算进货里。
-    里面只是一块天、外面是地天一摞时，这块天开局没处放，地天摞仍算能拿的货。
     """
     on_pad = [s for s in stacks if s[0].x < -2.5]
     if len(on_pad) <= 1:
@@ -623,12 +639,13 @@ def _closer_to_the_field(stacks):
     inner = max(s[0].x for s in on_pad)
     def near(stack):
         return stack[0].x >= -2.5 or stack[0].x >= inner - 0.05
-    kept = [s for s in stacks if near(s)]
-    inners = [s for s in on_pad if s[0].x >= inner - 0.05]
-    if inners and all(tuple(b.kind for b in s) == ('sky',) for s in inners):
-        kept.extend(s for s in stacks
-                    if s not in kept and tuple(b.kind for b in s) == ('ground', 'sky'))
-    return kept
+    return [s for s in stacks if near(s)]
+
+
+def nearest_transfer_blocks(blocks):
+    from ..flow.pick_pose import blocks_we_can_reach, group_stacks
+    reachable = blocks_we_can_reach(list(blocks))
+    return [b for stack in _closer_to_the_field(group_stacks(reachable)) for b in stack]
 
 
 def trusted_transfer_blocks(blocks, clipped: bool):
@@ -653,9 +670,8 @@ def pickable_goods(blocks):
     拿取整段会擦到栏杆或旁边块的那几摞先去掉：这趟当它们还不存在，先拿擦不到的。
     剩下的先拿靠近内场的，贴外沿的留到下一趟。
     """
-    from ..flow.pick_pose import GROUND, SKY, blocks_we_can_reach, composition, group_stacks
-    blocks = blocks_we_can_reach(list(blocks))
-    blocks = [b for stack in _closer_to_the_field(group_stacks(blocks)) for b in stack]
+    from ..flow.pick_pose import GROUND, SKY, composition, group_stacks
+    blocks = nearest_transfer_blocks(blocks)
     ground = sky = ground_stack = cap_stack = 0
     for stack in group_stacks(list(blocks)):
         comp = composition(stack)
@@ -686,7 +702,7 @@ def _nearest_nominal(block):
 def _pick_how(blocks, kind, count=1):
     """放地 / 放天空时，交接区 DETECT 找什么、用哪个示教点、拿几块。找不到返回 None。"""
     from ..flow.pick_pose import GROUND, SKY, composition, group_stacks
-    stacks = group_stacks(list(blocks))
+    stacks = group_stacks(nearest_transfer_blocks(blocks))
     singles = [s for s in stacks if composition(s) == (GROUND,)]
     doubles = [s for s in stacks if composition(s) == (GROUND, GROUND)]
     skies = [s for s in stacks if composition(s) == (SKY,)]
@@ -814,7 +830,7 @@ def _approach_and_place(choice, approaches, layer, with_check, from_north=False,
     """从过路点开到放置位再放下。"""
     from ..flow.steps import Action
     return (_drive_to_place(choice, approaches, with_check, from_north, on_west)
-            + [Action('PLACE', layer)])
+            + [Action('PLACE_ONE' if choice.pick_count == 2 and choice.count == 1 else 'PLACE', layer)])
 
 
 def planner_subflows():
@@ -928,7 +944,7 @@ def compile_choice(choice, approaches, blocks, holding=False, on_platform=False,
         return deck(_approach_and_place(choice, approaches, layer,
                                         with_check=choice.spot in SHARED,
                                         from_north=north_on_destination, on_west=west_on_destination))
-    how = _pick_how(blocks, 'sky' if choice.action == PLACE_SKY else 'ground', choice.count)
+    how = _pick_how(blocks, 'sky' if choice.action == PLACE_SKY else 'ground', choice.pick_count or choice.count)
     if how is None:
         return []
     what, nominal, count = how

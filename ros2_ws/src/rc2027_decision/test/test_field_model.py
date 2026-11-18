@@ -285,3 +285,12 @@ def test_retry_drops_held():
 def test_other_regions_ignored():
     m = FieldModel(SPOTS)
     assert m.observe(Observation('transfer_red', 1.0, True, 0.9, 2, False), FAR) is None
+
+
+def test_single_release_only_accounts_for_one_of_two_held_blocks():
+    m = FieldModel(SPOTS)
+    m.on_pick(2)
+    m.on_place(2, SPOTS['spot_03'], 1, one=True)
+    assert m.held == 1 and m.spots['spot_03'].expected_total == 2
+    m.on_place(1, SPOTS['spot_07'], 2)
+    assert m.held == 0 and m.spots['spot_07'].expected_total == 1

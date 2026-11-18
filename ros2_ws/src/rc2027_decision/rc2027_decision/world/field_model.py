@@ -245,10 +245,10 @@ class FieldModel:
         """PICK 做完了：车上多了 count 块。"""
         self.held += max(1, int(count))
 
-    def on_place(self, layer, gripper_xy, stamp) -> Tuple[Optional[str], str]:
+    def on_place(self, layer, gripper_xy, stamp, *, one=False) -> Tuple[Optional[str], str]:
         """PLACE 做完了：layer 是最下面那块放到第几层。返回 (建造点名或 None, 说明)。"""
-        count = self.held if self.held > 0 else 1
-        self.held = 0
+        count = 1 if one else max(1, self.held)
+        self.held = max(0, self.held - count)
         name = find_spot({n: (s.x, s.y) for n, s in self.spots.items()},
                          gripper_xy[0], gripper_xy[1], self.params.place_match_radius)
         if name is None:

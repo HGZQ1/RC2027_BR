@@ -39,25 +39,16 @@ def test_empty_south_shared_does_not_jump_our_tower():
     assert choice.action == PLACE_GROUND and choice.spot == 'spot_07'
 
 
-def test_opening_inner_sky_does_not_hide_the_cap():
-    """种子 1 第一趟：里面一块天，外面地天一摞。空塔吃不下那天，南共享还没看：先拿地天摞。"""
-    from rc2027_decision.world.planner import pickable_goods
-    approaches = load_approaches(APPROACHES)
+def test_near_sky_prevents_reaching_across_it_for_a_cap():
     blocks = [Block('ground', -3.68, -1.13, 0.1, 1), Block('sky', -3.68, -1.13, 0.1, 2),
               Block('sky', -3.28, -1.53, 0.26, 1)]
-    goods = pickable_goods(blocks)
-    assert goods.cap_stack == 1 and goods.sky == 2
-    choice = choose(towers(), goods, approaches)
-    assert choice.action == PLACE_SKY and choice.spot == 'spot_01' and choice.count == 2
-    steps = compile_choice(choice, approaches, blocks)
-    pick = next(i for i, s in enumerate(steps) if isinstance(s, Action) and s.name == 'PICK')
-    face = next(i for i, s in enumerate(steps)
-                if isinstance(s, Nav) and s.point == 'transfer_see' and s.yaw is not None)
-    assert pick < face
-    assert any(isinstance(s, Detect) and s.slot == 'check' for s in steps[face:])
-    assert all(getattr(s, 'point', None) != 'spot_07_glance' for s in steps)
-    detect = next(s for s in steps if isinstance(s, Detect) and s.slot == 'pick')
-    assert detect.what == 'groundsky'
+    assert pickable_goods(blocks) == Goods(sky=1)
+    field = towers(spot_08=Tower(ground=2, seen=True, blocked=True),
+                   spot_03=Tower(ground=1, seen=True))
+    assert choose(field, pickable_goods(blocks)).action == WAIT
+    field['spot_08'] = Tower(ground=2, seen=True)
+    assert choose(field, pickable_goods(blocks)).spot == 'spot_08'
+    assert pickable_goods(blocks[:2]) == Goods(sky=1, cap_stack=1)
 
 
 def test_opening_cap_is_picked_before_looking_at_south_shared():
@@ -723,7 +714,7 @@ def test_ground_and_sky_stack_finishes_a_one_layer_tower():
     approaches = load_approaches(APPROACHES)
     field = towers(spot_01=Tower(ground=1, seen=True),
                    spot_07=Tower(ground=2, sky_owner=SKY_OURS, seen=True))
-    goods = Goods(ground=1, sky=2, cap_stack=1)
+    goods = Goods(sky=1, cap_stack=1)
     choice = choose(field, goods, approaches)
     assert choice.action == PLACE_SKY and choice.spot == 'spot_01' and choice.count == 2
     blocks = [Block('ground', -3.68, -1.13, 0, 1), Block('sky', -3.68, -1.13, 0, 2),
@@ -778,7 +769,7 @@ def test_buried_ground_is_taken_with_its_sky():
               Block('sky', -3.28, -1.53, 0, 1)]
     goods = pickable_goods(blocks)
     # 单块天更靠近内场。南边自己的塔已经两层，先盖这块天。地天摞还在货里，这座塔吃不下。
-    assert goods.ground == 0 and goods.sky == 2 and goods.cap_stack == 1
+    assert goods == Goods(sky=1)
     choice = choose(field, goods, approaches)
     assert choice.action == PLACE_SKY and choice.spot == 'spot_07' and choice.count == 1
 
@@ -1066,3 +1057,16 @@ def test_pick_after_south_flip_leaves_transfer_facing_the_stairs():
     depart = steps[steps.index(Action('PICK', 2)) + 1:steps.index(Action('CLIMB_L2'))]
     yaw = bind_points(approaches)['l2_stair_foot'][2]
     assert depart == [Nav('transfer_see', yaw=yaw), Nav('l2_stair_foot')]
+
+
+def test_near_double_ground_can_top_up_a_one_ground_shared_tower():
+    field = towers(spot_07=Tower(ground=2, sky_owner=SKY_OURS, seen=True),
+                   spot_01=Tower(ground=1, seen=True), spot_02=Tower(ground=2, seen=True))
+    goods = Goods(ground=2, ground_stack=1)
+    choice = choose(field, goods)
+    assert (choice.spot, choice.pick_count, choice.count) == ('spot_01', 2, 1)
+    blocks = [Block('ground', -3.25, -1.55, 0, layer) for layer in (1, 2)]
+    steps = compile_choice(choice, load_approaches(APPROACHES), blocks)
+    assert Action('PICK', 2) in steps and steps[-1] == Action('PLACE_ONE', 2)
+    field['spot_03'] = Tower(ground=2, seen=True)
+    assert choose(field, goods).pick_count == 1

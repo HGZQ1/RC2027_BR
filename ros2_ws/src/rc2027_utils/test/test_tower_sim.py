@@ -151,3 +151,16 @@ def test_supply_trip_alternates():
     assert [b for stack in supply_trip(0) for b in stack['blocks']] == [
         'ground', 'ground', 'ground']
     assert [b for stack in supply_trip(1) for b in stack['blocks']] == ['ground', 'sky', 'sky']
+
+
+def test_place_one_leaves_lower_ground_in_gripper():
+    w = world()
+    rng = random.Random(1)
+    for i in range(2):
+        w.add(SimBlock(f'g{i}', 'ground', -3.7, -1.05, 0.65 + i * SIZES['ground'], 0.0))
+    assert w.pick((-3.125, -1.05, math.pi), 2) == ''
+    x, y, z = w.regions['spot_01']
+    w.add(SimBlock('base', 'ground', x, y, z + w.z_offset, 0))
+    assert w.place((x - w.gripper_offset, y, 0), 2, rng, one=True) == ''
+    assert w.carried == ['g0']
+    assert tower_kinds(w, 'spot_01') == ['ground', 'ground']

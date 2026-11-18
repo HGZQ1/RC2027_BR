@@ -135,7 +135,7 @@ class FieldStateNode(Node):
     def on_action_cmd(self, msg):
         """记下发出去的动作，等它 DONE。"""
         name = self.action_names.get(msg.action_id)
-        if name in ('PICK', 'PLACE', 'FLIP_SKY'):
+        if name in ('PICK', 'PLACE', 'PLACE_ONE', 'FLIP_SKY'):
             self.pending[msg.cmd_seq] = (name, msg.param)
         else:
             self.pending.pop(msg.cmd_seq, None)
@@ -166,12 +166,12 @@ class FieldStateNode(Node):
             return
         if pose is None:
             self.get_logger().warn(f'PLACE {param} 做完，但查不到车的位姿，不知道放在哪，不记')
-            self.model.on_place(param, (math.inf, math.inf), self.now())
+            self.model.on_place(param, (math.inf, math.inf), self.now(), one=name == 'PLACE_ONE')
             return
         x, y, yaw = pose
         gripper = (x + self.gripper_offset * math.cos(yaw),
                    y + self.gripper_offset * math.sin(yaw))
-        _, message = self.model.on_place(param, gripper, self.now())
+        _, message = self.model.on_place(param, gripper, self.now(), one=name == 'PLACE_ONE')
         self.get_logger().info(message)
         self.publish()
 

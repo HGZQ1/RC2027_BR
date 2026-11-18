@@ -329,8 +329,8 @@ class SimTower(Node):
         err = ''
         if name == 'PICK':
             err = self.do_pick(param)
-        elif name == 'PLACE':
-            err = self.do_place(param)
+        elif name in ('PLACE', 'PLACE_ONE'):
+            err = self.do_place(param, one=name == 'PLACE_ONE')
         elif name == 'FLIP_SKY':
             err = self.do_flip()
         elif name == 'CLIMB_L2':
@@ -421,11 +421,12 @@ class SimTower(Node):
                 self.tr_pending = True   # 等 BR 离开交接区再送
         return ''
 
-    def do_place(self, level):
+    def do_place(self, level, *, one=False):
         names = list(self.world.carried)
-        err = self.world.place(self.robot, level, self.rng, self.sigma_xy, self.sigma_yaw)
+        err = self.world.place(self.robot, level, self.rng, self.sigma_xy, self.sigma_yaw, one=one)
         if err:
             return err
+        names = [name for name in names if name not in self.world.carried]
         for name in names:
             self.spawn_block(self.world.blocks[name])
         self.t_last_place = self.now()

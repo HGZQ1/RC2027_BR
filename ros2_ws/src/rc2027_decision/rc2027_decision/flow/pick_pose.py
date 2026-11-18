@@ -243,7 +243,7 @@ def blocks_we_can_reach(blocks: List[Block], nominal_yaw: float = math.pi,
 
 
 def choose(blocks: List[Block], what: str, nominal: Tuple[float, float, float],
-           params: PickParams = PickParams()) -> Tuple[Optional[PickResult], str]:
+           params: PickParams = PickParams(), eligible=None) -> Tuple[Optional[PickResult], str]:
     """挑一摞、算拿取位姿。返回 (结果, 说明)；结果是 None 时说明里写为什么。
 
     Args:
@@ -261,7 +261,7 @@ def choose(blocks: List[Block], what: str, nominal: Tuple[float, float, float],
         seen = '、'.join('+'.join(composition(s)) for s in stacks) or '什么都没有'
         return None, f'没找到 {what}（看到的：{seen}）'
     # 抓整摞：按最下面那块定位（上面的块可能放歪，但夹爪 / 导向对的是底下那块）
-    usable = [s for s in wanted if s[0].reliable]
+    usable = [s for s in wanted if s[0].reliable and (eligible is None or s[0] in eligible)]
     if not usable:
         return None, f'找到 {len(wanted)} 摞 {what}，但都只看到一部分面，中心不可靠（换个角度再看）'
     best = None
