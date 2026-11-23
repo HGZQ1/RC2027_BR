@@ -1,0 +1,32 @@
+# point_navigator 参数（见 docs/decisions/0005-navigation.md）
+#
+# 2026-10-04 的数全是没调过的起点值：速度/加速度/容差从 GAFA 去年
+# waypoint_navigator 的量级出发，速度曲线改成了 min(max, kp*d, sqrt(2*a*d))。
+# 在理想全向车上单测能到点（test/test_point_nav_controller_main.cpp），
+# 但 Gazebo / 真车的响应延迟、舵轮转向时间都没考虑，要实际调。
+point_navigator:
+  ros__parameters:
+    map_frame: map
+    robot_frame: base_link          # 跟 teach_point 录点用的同一个坐标系
+    control_rate: 20.0              # Hz
+
+    max_linear_speed: 1.0           # m/s
+    min_linear_speed: 0.03          # m/s，平移阶段下限，防止最后几厘米蹭不动
+    max_angular_speed: 2.0          # rad/s
+    min_angular_speed: 0.05         # rad/s
+    kp_linear: 1.5                  # 1/s
+    kp_angular: 2.0                 # 1/s
+    max_hold_speed: 0.2             # m/s
+    linear_decel: 0.8               # m/s²，刹车曲线用
+    angular_decel: 3.0              # rad/s²
+    max_linear_accel: 1.0           # m/s²，指令变化率限幅
+    max_angular_accel: 4.0          # rad/s²
+
+    xy_tolerance: 0.03              # m
+    yaw_tolerance: 0.03             # rad（约 1.7°）
+
+    goal_timeout: 30.0              # s
+    stuck_timeout: 5.0              # s
+    progress_min_delta: 0.02        # m
+    max_pushes: 3                   # 转身时被推开这么多次算卡住（顶着方块 / 围栏），0 = 不查
+    rotate_timeout: 8.0             # s，进了 ROTATE 这么久还没到位算卡住，0 = 不查

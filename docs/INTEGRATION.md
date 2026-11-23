@@ -1,6 +1,6 @@
 # RC2027 系统联调与 AI 对接文档
 
-核对日期：2026-11-19。源码 HEAD `e7686d9`，全场规划代码基线 `8c231d2`。
+核对日期为 2026-11-23。
 本文件面向组长、电控和接手 AI，独立描述运行契约与待办，不依赖学习记录或聊天历史。根 README 负责环境和目录入口；消息定义、源码及参数文件是接口的最终依据。
 
 ## 1. 接手顺序
@@ -16,7 +16,7 @@
 
 - 真雷达：`livox_ros_driver2` 发布 `livox_ros_driver2/msg/CustomMsg` 点云和 IMU；仿真由 Livox/Gazebo 插件提供对应输入。
 - Point-LIO 融合点云与 IMU，输出 `/aft_mapped_to_init`（`nav_msgs/msg/Odometry`）、`/cloud_registered` 等。
-- `lio_to_base` 根据 URDF 中 IMU 相对车体的刚体变换，发布 `lidar_odom → base_footprint`。
+- Point-LIO 发布 `lidar_odom → imu_link`，URDF 发布 `imu_link → base_link` 以及底盘下的车脚和传感器外参。
 - `field_localizer` 将起点或 Retry Zone 的已知位姿与当前里程计相接，发布 `map → lidar_odom`；静止时可用先验地图 ICP 修正。
 - `cloud_crop` 去除车体/货仓点，`block_detector` 将区域点云解析为方块、堆叠层数和可见性。
 - `field_state` 把多帧检测与成功的拿放动作合并；规则规划器读世界模型和可拿货物，编译下一段 Flow。
@@ -87,7 +87,7 @@ uint8 err_code
 
 ## 4. 电控对接任务
 
-框架源码在 `ros2_ws/src/auto_serial_bridge`，当前 `config/protocol.yaml` 的 `messages: []`，只具备系统协议，尚未配置 `/cmd_vel`、`/action_cmd`、`/action_state` 的业务映射。
+框架源码在 `ros2_ws/src/communication/auto_serial_bridge`，当前 `config/protocol.yaml` 的 `messages: []`，只具备系统协议，尚未配置 `/cmd_vel`、`/action_cmd`、`/action_state` 的业务映射。
 
 当前系统配置为串口 `/dev/ttyACM0`、115200，帧头 0x5A/0xA5、CRC8、握手版本检查、心跳 1000 ms、超时 3000 ms。接入时双方统一这些参数及业务消息编号。协议格式和生成方法以该框架源码及配置为准。
 
@@ -117,7 +117,7 @@ ros2 run tf2_ros tf2_echo map base_footprint
 联调顺序：
 
 1. 安装环境、确认无重复定位/导航/模拟动作节点。
-2. 静止测点云、IMU单位和时间戳；核对 URDF 外参、Point-LIO 的 TF 关闭设置。
+2. 静止测点云、IMU单位和时间戳；核对 URDF 外参、Point-LIO 的原生 IMU TF 发布设置。
 3. 锁定已知起点，人工量测 map 下车位，核对移动/转向与 TF 方向。
 4. 架空或低速验证 vx/vy/wz、零速度、丢包/失联停车；再做单点导航及取消/卡住测试。
 5. 不带导航单测机构命令的 RUNNING、DONE、FAILED、超时与重传。
@@ -127,13 +127,11 @@ ros2 run tf2_ros tf2_echo map base_footprint
 
 ## 6. 当前版本与待验证事项
 
-全场规则摘要：L1 顺序 `spot_07 → spot_01 → spot_03 → spot_02`，按实际货物和共享区状态插队/重选；L1 完成检查为 07/01/02，03用于承接合适余货。当前货物 L1 用不上时允许先送 L2，按货物可用情况安排上楼。L2 自己半边先08后05，完成后 STOP；本版未执行实际五色石任务。
-
-最新已修空手重选、顶部出视场误拿地天摞，以及南北共享离开时的绕 L2 路线。最新绕行仍需完整仿真验证。规划器与世界模型97项单测通过；串口、机构和整场运行分别联调。
+全场先按货物安排四座己方塔，再处理 L1 南北共享。短赛程仅安排南侧己方塔和一座 L2，以宣告去五色石为结束条件。
 
 仿真 L2 用换位与定位 relatch；真实上下楼的动作时间和动力学在实机测定。定位包含台面高度拉回与恢复逻辑，运动验收同时记录原始里程计、修正/重锁日志与真值。
 
-边走边转尚未实现。若主线实现，需要重新核对车身、外伸雷达和货仓的扫掠几何，分别测试纯平移、纯旋转与组合运动。当前仿真点是同一时刻快照，offset_time=0与模型一致；真实雷达另外验证扫描期间的运动畸变。
+拿放预备段支持低速边走边对齐。实车联调时分别验证纯平移、纯旋转和组合运动，核对车身、外伸雷达和货仓的扫掠范围。当前仿真点是同一时刻快照，offset_time=0与模型一致；真实雷达另外验证扫描期间的运动畸变。
 
 ## 7. 必要设计原因
 

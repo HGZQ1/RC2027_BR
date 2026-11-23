@@ -94,7 +94,7 @@ apt-get install -y --no-install-recommends \
     ros-humble-teleop-twist-keyboard
 
 # ── auto_serial_bridge 编译依赖（下位机协议代码生成框架，见
-#    ros2_ws/src/auto_serial_bridge/NOTES.md）──
+#    ros2_ws/src/communication/auto_serial_bridge/NOTES.md）──
 #   package.xml 里的 <depend> 对应到的 apt 包名；asio 本身没单独列，
 #   实测跟着 ros-humble-asio-cmake-module 一起装好了，不需要再单独加
 #   （2026-10-02 助教一次性容器实测：装了下面三个之后 15.6s 编译通过）

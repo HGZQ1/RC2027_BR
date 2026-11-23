@@ -40,7 +40,7 @@ source /opt/ros2_ws/install/setup.bash
 编译后，在配置好 DISPLAY 的容器终端执行：
 
 ```bash
-bash /workspace/ros2_ws/src/rc2027_utils/scripts/run_l2_cycle_sim.sh 1
+bash /workspace/ros2_ws/src/tools/rc2027_utils/scripts/run_l2_cycle_sim.sh 1
 ```
 
 先通过 1 轮，再把末尾改成 `20`。脚本不编译，自动 source ROS、外部定位工作区、业务工作区和仿真工作区，显式开启 Gazebo、RViz、定位、导航、sim_tower、真值核对和测试执行器，不启动比赛规划。等待初始定位最多120秒，与服务调用12秒超时分开；每5秒显示可见节点。检测到已有场次则拒绝启动，不清理别人的节点。

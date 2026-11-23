@@ -61,37 +61,27 @@
     <origin xyz="0 0 0" rpy="0 0 0"/>
   </xacro:mid360_sim>
 
-  <!-- ══════════ 仿真 IMU（坑 1：雷达插件不发 IMU，单独加）══════════
-       和雷达挂在同一个 link（livox_sim）上 → Point-LIO 仿真配置里
-       extrinsic_T/R 是零/单位阵。雷达的安装位置/俯仰来自 robot_params.yaml 的 lidar 节
-       （2026-10-04 起车头外伸、前下倾 30°），这里零偏移挂在 lidar_link 上跟着倾斜。
-       输出单位 m/s²（坑 2）→ 仿真配置 acc_norm: 9.81。
-       200 Hz 对应 imu_time_inte: 0.005 -->
-  <gazebo reference="livox_sim">
-    <sensor name="livox_imu" type="imu">
+  <gazebo reference="base_link">
+    <sensor name="chassis_imu" type="imu">
       <always_on>true</always_on>
       <update_rate>200</update_rate>
-      <plugin name="livox_imu_plugin" filename="libgazebo_ros_imu_sensor.so">
+      <plugin name="chassis_imu_plugin" filename="libgazebo_ros_imu_sensor.so">
         <ros>
-          <remapping>~/out:=livox/imu</remapping>
+          <remapping>~/out:=imu/data</remapping>
         </ros>
+        <frame_name>imu_link</frame_name>
         <initial_orientation_as_reference>false</initial_orientation_as_reference>
       </plugin>
     </sensor>
   </gazebo>
 
-  <!-- ══════════ 全向运动插件（舵轮的替身）══════════
-       2026-10-04 底盘定为舵轮，原来的差速插件换掉。Gazebo Classic 没有现成的舵轮
-       插件，用 gazebo_ros 自带的 planar_move：订阅 cmd_vel（vx/vy/wz），每个更新周期
-       直接设置车体速度，不经过轮子。等于"理想全向底盘"：舵轮转向延迟、打滑都不模拟，
-       验证定位 + 导航逻辑够用，调导航参数时要记得真车会慢一拍。
-       ⚠️ 插件源码里每次都把竖直速度设成 0（只管水平面），车开上坡道/L1 平台这种
-       有高度变化的地方不会像真车那样爬，平地上没问题。
-       publish_odom_tf=false：定位用 Point-LIO，不让它再发一棵 odom TF；/odom 照发。
-       teleop_twist_keyboard 按住 Shift 是横移（全向模式） -->
+  <!-- 默认按物理步限加速度；可显式选择旧 planar_move 做同路线对照。 -->
+  <xacro:arg name="sim_drive_plugin" default="librc2027_planar_drive.so"/>
   <xacro:unless value="$(arg sim_replay)">
   <gazebo>
-    <plugin name="planar_move" filename="libgazebo_ros_planar_move.so">
+    <plugin name="planar_move" filename="$(arg sim_drive_plugin)">
+      <linear_accel>8.0</linear_accel>
+      <angular_accel>6.0</angular_accel>
       <update_rate>50</update_rate>
       <publish_rate>50</publish_rate>
       <publish_odom>true</publish_odom>

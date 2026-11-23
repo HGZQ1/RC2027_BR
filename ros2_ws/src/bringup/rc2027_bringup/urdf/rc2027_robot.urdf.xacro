@@ -1,0 +1,224 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="rc2027_robot">
+
+  <!-- ============================================================
+       RC2027 机器人 URDF（占位骨架，舵轮）
+
+       2026-10-04 底盘定为舵轮（见 docs/decisions/0005-navigation.md），从之前的
+       差速两驱占位换过来。模块数量/位置/轮径都还是占位。
+
+       ★ 所有尺寸来源: config/robot_params.yaml
+         由 launch/display.launch.py 读取后作为 xacro:arg 传入
+         直接改 robot_params.yaml 即可，不需要手动改这个文件
+         （跟去年 GAFA rc2026_bringup 的约定一样，沿用同一套模式）★
+       ============================================================ -->
+
+  <!-- ══════════ 底盘几何参数 ══════════ -->
+  <xacro:arg name="chassis_width"  default="0.30"/>
+  <xacro:arg name="chassis_depth"  default="0.30"/>
+  <xacro:arg name="chassis_height" default="0.15"/>
+  <xacro:arg name="wheel_radius"   default="0.05"/>
+  <xacro:arg name="wheel_width"    default="0.03"/>
+  <xacro:arg name="module_offset_x" default="0.10"/>
+  <xacro:arg name="module_offset_y" default="0.10"/>
+
+  <!-- ══════════ Livox Mid-360S 激光雷达安装参数 ══════════ -->
+  <!-- lidar_z 默认值 = 底盘高度(0.15) + 雷达自身半高(0.03)，让雷达正好
+       坐在底盘顶面上，不是悬空飘在半空——2026-10-03 实机 rviz 看出来
+       "雷达飞天"：之前的 0.25 跟底盘高度完全没关系，是拍脑袋填的占位数，
+       没检查过跟 chassis_height 的相对关系 -->
+  <xacro:arg name="lidar_x"     default="0.0"/>
+  <xacro:arg name="lidar_y"     default="0.0"/>
+  <xacro:arg name="lidar_z"     default="0.18"/>
+  <xacro:arg name="lidar_roll"  default="0.0"/>
+  <xacro:arg name="lidar_pitch" default="0.0"/>
+  <xacro:arg name="lidar_yaw"   default="0.0"/>
+
+  <!-- ══════════ D435i 相机安装参数 ══════════ -->
+  <!-- camera_z 同理 = 底盘高度(0.15) + 相机自身半高(0.0125)，同样是让它
+       贴着底盘顶面，不是悬空 -->
+  <xacro:arg name="camera_x"     default="0.15"/>
+  <xacro:arg name="camera_y"     default="0.0"/>
+  <xacro:arg name="camera_z"     default="0.16"/>
+  <xacro:arg name="camera_roll"  default="0.0"/>
+  <xacro:arg name="camera_pitch" default="0.0"/>
+  <xacro:arg name="camera_yaw"   default="0.0"/>
+
+  <!-- ══════════ 属性 (xacro:arg 的简写别名) ══════════ -->
+  <xacro:property name="cw"  value="$(arg chassis_width)"/>
+  <xacro:property name="cd"  value="$(arg chassis_depth)"/>
+  <xacro:property name="ch"  value="$(arg chassis_height)"/>
+  <xacro:property name="wr"  value="$(arg wheel_radius)"/>
+  <xacro:property name="ww"  value="$(arg wheel_width)"/>
+  <xacro:property name="mx" value="$(arg module_offset_x)"/>
+  <xacro:property name="my" value="$(arg module_offset_y)"/>
+
+  <!-- ══════════ 材质定义 ══════════ -->
+  <material name="grey">      <color rgba="0.6 0.6 0.6 1.0"/></material>
+  <material name="dark_grey"> <color rgba="0.3 0.3 0.3 1.0"/></material>
+  <material name="blue">      <color rgba="0.1 0.1 0.8 1.0"/></material>
+
+  <!-- ══════════════ base_footprint（地面投影，Nav2 约定要有这一层） ══════════════ -->
+  <link name="base_footprint"/>
+
+  <xacro:arg name="localization_tf" default="true"/>
+  <xacro:if value="$(arg localization_tf)">
+    <joint name="base_footprint_joint" type="fixed">
+      <parent link="base_link"/>
+      <child link="base_footprint"/>
+      <origin xyz="0 0 ${-wr}" rpy="0 0 0"/>
+    </joint>
+  </xacro:if>
+  <xacro:unless value="$(arg localization_tf)">
+    <joint name="base_footprint_joint" type="fixed">
+      <parent link="base_footprint"/>
+      <child link="base_link"/>
+      <origin xyz="0 0 ${wr}" rpy="0 0 0"/>
+    </joint>
+  </xacro:unless>
+
+  <!-- ══════════════ base_link（底盘主体，占位长方体） ══════════════ -->
+  <link name="base_link">
+    <visual>
+      <geometry><box size="${cw} ${cd} ${ch}"/></geometry>
+      <origin xyz="0 0 ${ch/2}" rpy="0 0 0"/>
+      <material name="grey"/>
+    </visual>
+    <collision>
+      <geometry><box size="${cw} ${cd} ${ch}"/></geometry>
+      <origin xyz="0 0 ${ch/2}" rpy="0 0 0"/>
+    </collision>
+    <inertial>
+      <mass value="5.0"/>
+      <inertia ixx="0.05" ixy="0" ixz="0" iyy="0.05" iyz="0" izz="0.08"/>
+    </inertial>
+  </link>
+
+  <!-- ══════════════ 舵轮模块（4 个，四角对称） ══════════════
+       占位：每个模块只画一个轮子，**固定关节**。真实舵轮每个模块有转向（绕 z）
+       + 驱动（绕轮轴）两个关节；现在没有任何东西发 joint_states（下位机协议还没定），
+       用 continuous 关节的话 robot_state_publisher 不发这些 link 的 TF，RViz 里轮子
+       会报错。等串口桥能报模块角度了，再改成 continuous 关节 + 发 joint_states，
+       纯粹是可视化的事，不影响定位和导航（它们只看 base_link）。
+       z=0：base_link 原点就在轮轴高度（base_footprint_joint 已经抬了 wr） -->
+  <xacro:macro name="swerve_module" params="name x y">
+    <link name="${name}_wheel_link">
+      <visual>
+        <geometry><cylinder radius="${wr}" length="${ww}"/></geometry>
+        <origin xyz="0 0 0" rpy="${pi/2} 0 0"/>
+        <material name="dark_grey"/>
+      </visual>
+      <collision>
+        <geometry><cylinder radius="${wr}" length="${ww}"/></geometry>
+        <origin xyz="0 0 0" rpy="${pi/2} 0 0"/>
+      </collision>
+      <inertial>
+        <mass value="0.5"/>
+        <inertia ixx="0.001" ixy="0" ixz="0" iyy="0.001" iyz="0" izz="0.001"/>
+      </inertial>
+    </link>
+    <joint name="${name}_module_joint" type="fixed">
+      <parent link="base_link"/>
+      <child link="${name}_wheel_link"/>
+      <origin xyz="${x} ${y} 0" rpy="0 0 0"/>
+    </joint>
+  </xacro:macro>
+
+  <xacro:swerve_module name="fl" x="${mx}"  y="${my}"/>
+  <xacro:swerve_module name="fr" x="${mx}"  y="${-my}"/>
+  <xacro:swerve_module name="rl" x="${-mx}" y="${my}"/>
+  <xacro:swerve_module name="rr" x="${-mx}" y="${-my}"/>
+
+  <!-- ══════════════ Livox Mid-360S 激光雷达 ══════════════ -->
+  <link name="lidar_link">
+    <visual>
+      <geometry><cylinder radius="0.05" length="0.06"/></geometry>
+      <material name="blue"/>
+    </visual>
+    <collision>
+      <geometry><cylinder radius="0.05" length="0.06"/></geometry>
+    </collision>
+    <inertial>
+      <mass value="0.265"/>
+      <inertia ixx="0.0001" ixy="0" ixz="0" iyy="0.0001" iyz="0" izz="0.0001"/>
+    </inertial>
+  </link>
+
+  <joint name="lidar_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="lidar_link"/>
+    <origin xyz="$(arg lidar_x) $(arg lidar_y) $(arg lidar_z)"
+            rpy="$(arg lidar_roll) $(arg lidar_pitch) $(arg lidar_yaw)"/>
+  </joint>
+
+  <!-- 定位树以 Point-LIO 使用的 IMU 为根。Gazebo 物理模型仍以车脚为根。 -->
+  <xacro:arg name="use_lidar_imu_link" default="true"/>
+  <xacro:if value="$(arg localization_tf)">
+    <link name="imu_link"/>
+    <xacro:if value="$(arg use_lidar_imu_link)">
+      <!-- base -> lidar 的 R = Rz(yaw) Ry(pitch) Rx(roll)。IMU -> base
+           的旋转为 R^T，平移为 -R^T t_lidar - t_imu_in_lidar。 -->
+      <xacro:property name="lx" value="$(arg lidar_x)"/>
+      <xacro:property name="ly" value="$(arg lidar_y)"/>
+      <xacro:property name="lz" value="$(arg lidar_z)"/>
+      <xacro:property name="lr" value="$(arg lidar_roll)"/>
+      <xacro:property name="lp" value="$(arg lidar_pitch)"/>
+      <xacro:property name="lw" value="$(arg lidar_yaw)"/>
+      <xacro:property name="r00" value="${cos(lw)*cos(lp)}"/>
+      <xacro:property name="r01" value="${cos(lw)*sin(lp)*sin(lr)-sin(lw)*cos(lr)}"/>
+      <xacro:property name="r02" value="${cos(lw)*sin(lp)*cos(lr)+sin(lw)*sin(lr)}"/>
+      <xacro:property name="r10" value="${sin(lw)*cos(lp)}"/>
+      <xacro:property name="r11" value="${sin(lw)*sin(lp)*sin(lr)+cos(lw)*cos(lr)}"/>
+      <xacro:property name="r12" value="${sin(lw)*sin(lp)*cos(lr)-cos(lw)*sin(lr)}"/>
+      <xacro:property name="r20" value="${-sin(lp)}"/>
+      <xacro:property name="r21" value="${cos(lp)*sin(lr)}"/>
+      <xacro:property name="r22" value="${cos(lp)*cos(lr)}"/>
+      <joint name="imu_base_joint" type="fixed">
+        <parent link="imu_link"/>
+        <child link="base_link"/>
+        <origin xyz="${-r00*lx-r10*ly-r20*lz-0.011}
+                     ${-r01*lx-r11*ly-r21*lz-0.02329}
+                     ${-r02*lx-r12*ly-r22*lz+0.04412}"
+                rpy="${atan2(r12,r22)} ${atan2(-r02,sqrt(r12*r12+r22*r22))} ${atan2(r01,r00)}"/>
+      </joint>
+    </xacro:if>
+    <xacro:unless value="$(arg use_lidar_imu_link)">
+      <joint name="imu_base_joint" type="fixed">
+        <parent link="imu_link"/>
+        <child link="base_link"/>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+      </joint>
+    </xacro:unless>
+  </xacro:if>
+
+  <!-- ══════════════ Intel RealSense D435i 相机 ══════════════ -->
+  <link name="camera_link">
+    <visual>
+      <geometry><box size="0.025 0.09 0.025"/></geometry>
+      <material name="grey"/>
+    </visual>
+    <collision>
+      <geometry><box size="0.025 0.09 0.025"/></geometry>
+    </collision>
+    <inertial>
+      <mass value="0.072"/>
+      <inertia ixx="0.00001" ixy="0" ixz="0" iyy="0.00001" iyz="0" izz="0.00001"/>
+    </inertial>
+  </link>
+
+  <joint name="camera_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="camera_link"/>
+    <origin xyz="$(arg camera_x) $(arg camera_y) $(arg camera_z)"
+            rpy="$(arg camera_roll) $(arg camera_pitch) $(arg camera_yaw)"/>
+  </joint>
+
+  <!-- D435i 光学坐标系（REP-103 约定：Z 前，X 右，Y 下），图像处理节点挂这个 -->
+  <link name="camera_optical_frame"/>
+  <joint name="camera_optical_joint" type="fixed">
+    <parent link="camera_link"/>
+    <child link="camera_optical_frame"/>
+    <origin xyz="0 0 0" rpy="${-pi/2} 0 ${-pi/2}"/>
+  </joint>
+
+</robot>

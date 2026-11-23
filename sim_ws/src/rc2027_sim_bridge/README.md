@@ -45,11 +45,9 @@ GUI 卡的话用 GPU 版容器（`.devcontainer/gpu/`）。
 
 ## 设计上的几个取舍
 
-- **Point-LIO 不发 TF**（`tf_send_en: False`），TF 链由定位链路补上
-  （2026-10-04，0003 决定 8）：
-  `map →(field_localizer) lidar_odom →(lio_to_base) base_footprint →(URDF) ...`。
-  仿真里 `body_frame=livox_sim`（雷达、IMU 同一个 link）。不想起定位链路：
-  `localization:=false`
+- **TF** 走 `map → lidar_odom → imu_link → base_link → base_footprint`。Point-LIO
+  发布 IMU 位姿，仿真 IMU 和底盘重合。Gazebo 物理模型和 RViz 的 TF 描述由同一 xacro 生成。
+  `localization:=false` 可单独关闭场地定位。
 - **真值**：仿真 URDF 里加了 Gazebo p3d 插件，发 `/ground_truth/odom`（车体
   `base_footprint` 在世界系的真实位姿；世界系 = 场地坐标 = `map`）
 - **舵轮用 `planar_move` 代替**（2026-10-04，0005）：Gazebo Classic 没有舵轮插件，
@@ -116,7 +114,7 @@ CPU 射线传感器都在**同一个线程**，靠配置用不上多核，只能
 3. **雷达时间戳被 /clock 取整到 0.1 s**（助教后来查到的真正原因，原地转身时定位抖、
    地图跟着漂）：改了 Livox 插件，用 `world->SimTime()` 打时间戳，见插件 NOTES.md。
    导航仿真降速保留
-另外 `lio_to_base` 加了看门狗，Point-LIO 停止输出超过 1 s 就打 ERROR。
+另外 `field_localizer` 监测 Point-LIO 输出，超过 1 s 无里程计就报警。
 
 **上坡仍然不要测**：planar_move 每步把竖直速度设 0，车会跟坡道硬顶、IMU 读到冲击，
 这是仿真模型的限制。
@@ -171,7 +169,7 @@ ros2 run rc2027_utils sim_climb_replay          # 约 52 s（仿真时间）
 sim_ws 改完没 `colcon build rc2027_sim_bridge`（world 里没有 `gazebo_ros_state`，脚本会直接报
 `/gazebo/set_entity_state 不存在`）。**RViz 里的车是"定位认为的位置"，不能用来判断 Gazebo 里车动没动**
 （10-04 第一次测就是车没动、在地面上调了 retry l1，RViz 显示车在 L1）。看什么：
-1. 爬楼梯过程中 Point-LIO 不发散（RViz 点云不乱飞、`lio_to_base` 没有看门狗 ERROR），
+1. 爬楼梯过程中 Point-LIO 不发散（RViz 点云不乱飞、`field_localizer` 无断流告警），
    `ground_truth_check` 的 xy / yaw / **z** 误差保持在几厘米以内（运动中会因为延迟大一点）
 2. 到 L1 Retry Zone 停稳后：`ros2 service call /field_localizer/relocalize std_srvs/srv/Trigger`
    —— 应该接受、修正量小，静止误差 1～2 cm、z 误差 1～2 cm
@@ -229,7 +227,7 @@ ros2 launch rc2027_sim_bridge sim_mapping.launch.py start_zone:=l1
 ros2 launch rc2027_perception block_detector.launch.py sim:=true
 ros2 run rc2027_utils sim_tower          # 假电控 + 假 TR（场景 config/block_scenes/towers_plan2.yaml）
 ros2 launch rc2027_decision flow.launch.py use_sim_time:=true mock_actions:=false \
-  flows:=/workspace/ros2_ws/src/rc2027_decision/config/flows/two_towers_sim.yaml
+  flows:=/workspace/ros2_ws/src/decision/rc2027_decision/config/flows/two_towers_sim.yaml
 ros2 service call /flow_runner/start std_srvs/srv/Trigger
 ```
 

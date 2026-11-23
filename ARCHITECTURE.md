@@ -27,10 +27,12 @@ rc2027/
 
 ## 二、`ros2_ws/src` 下各包职责
 
+源码按 `bringup/`、`communication/`、`decision/`、`navigation/`、`perception/` 和 `tools/` 分组，目录内沿用现有 ROS 包名。导航包内的 `navigation/` 放点到点控制，`localization/` 放场地锁定与高度检查，`localization/registration/` 放配准核心、测试和 small_gicp。Point-LIO 的建图入口在 `external_ws/src/point_lio`，仿真先验地图和生成脚本在 `sim_ws/src/rc2027_sim_bridge/maps`。
+
 | 包名 | 职责 | 对应旧代码参考 |
 |---|---|---|
 | `rc2027_bringup` | 顶层 launch、URDF、`robot_params.yaml` 式的集中参数表 | GAFA `rc2026_bringup` |
-| `rc2027_navigation` | 定位链路：`lio_to_base`（Point-LIO 的 IMU 位姿换成车体位姿，发 `lidar_odom → base_footprint`）、`field_localizer`（锁定并发布 `map → lidar_odom`，Retry Zone 复位后重新锁定，先验地图 + small_gicp ICP 精修），见 0003 决定 8、9；`point_navigator` 点到点导航（学 GAFA 最终方案，`NavigateToPose` 接口，见 0005）；以后的 EKF 融合配置、地图。**C++**（定位算感知层，组长 2026-10-03 定的） | GAFA `rc2026_navigation`，但 ICP 触发逻辑要改成"从 Retry Zone 复位后触发" |
+| `rc2027_navigation` | 定位链路：Point-LIO 原生 TF（`lidar_odom → imu_link`）通过 URDF 接 `base_link`、`field_localizer`（锁定并发布 `map → lidar_odom`，Retry Zone 复位后重新锁定，先验地图 + small_gicp ICP 精修），见 0003 决定 8、9；`point_navigator` 点到点导航（学 GAFA 最终方案，`NavigateToPose` 接口，见 0005）；以后的 EKF 融合配置、地图。**C++**（定位算感知层，组长 2026-10-03 定的） | GAFA `rc2026_navigation`，但 ICP 触发逻辑要改成"从 Retry Zone 复位后触发" |
 
 **分层语言（组长 2026-10-03 明确）**：感知层、通信层用 **C++**（rclcpp）；
 决策层用 Python；赛前工具（标定、示教录点、生成先验地图）用 Python 不受约束；

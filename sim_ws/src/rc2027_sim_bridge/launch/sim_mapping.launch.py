@@ -10,9 +10,8 @@
      （默认红方 box_b，即 BR 的位置，朝 +y）。Gazebo 世界坐标和 field.xml
      坐标系一致（核对过储存区网格的位置），所以直接用 yaml 里的数
   4. Point-LIO（pointlio_mapping 节点，用本包 config/point_lio_mid360_sim.yaml，
-     TF 关掉）——**spawn 完成后再等 3 s 才起**，让 IMU 初始化用的是车停稳以后的数据
-  5. 定位链路（rc2027_navigation/localization.launch.py：lio_to_base +
-     field_localizer，body_frame=livox_sim），补上 map -> lidar_odom ->
+     发布 lidar_odom -> imu_link）——**spawn 完成后再等 3 s 才起**，让 IMU 初始化用的是车停稳以后的数据
+  5. 场地定位发布 map -> lidar_odom，Point-LIO 和 URDF 接上
      base_footprint，teach_point/导航查 map -> base_link 才有值（0003 决定 8）
   6. 点到点导航（rc2027_navigation/navigation.launch.py：point_navigator，0005），
      仿真降速（config/point_navigator_sim.yaml）。
@@ -41,6 +40,8 @@
 
 import math
 import os
+import shlex
+from tempfile import TemporaryDirectory
 
 import yaml
 from ament_index_python.packages import get_package_share_directory
@@ -49,7 +50,7 @@ from launch.actions import (
     DeclareLaunchArgument, IncludeLaunchDescription, OpaqueFunction, RegisterEventHandler,
     SetEnvironmentVariable, TimerAction)
 from launch.conditions import IfCondition
-from launch.event_handlers import OnProcessExit
+from launch.event_handlers import OnProcessExit, OnShutdown
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
@@ -62,7 +63,27 @@ from launch_ros.actions import Node
 POINT_LIO_DELAY_AFTER_SPAWN = 3.0
 
 
-def _spawn_robot_then_point_lio(context):
+def _lidar_extrinsics(context):
+    """Point-LIO 需要雷达在 IMU（base_link）下的位姿，跟 lidar_joint 同源。"""
+    path = os.path.join(get_package_share_directory('rc2027_bringup'), 'config', 'robot_params.yaml')
+    with open(path, encoding='utf-8') as stream:
+        lidar = yaml.safe_load(stream)['lidar']
+    overrides = dict(arg.split(':=', 1) for arg in
+                     shlex.split(LaunchConfiguration('xacro_overrides').perform(context)))
+    def value(axis, key):
+        return float(overrides.get('lidar_' + axis, lidar[key]))
+
+    translation = [value(axis, 'offset_' + axis) for axis in 'xyz']
+    roll, pitch, yaw = [value(axis, axis) for axis in ('roll', 'pitch', 'yaw')]
+    cr, cp, cy = map(math.cos, (roll, pitch, yaw))
+    sr, sp, sy = map(math.sin, (roll, pitch, yaw))
+    rotation = [cy*cp, cy*sp*sr-sy*cr, cy*sp*cr+sy*sr,
+                sy*cp, sy*sp*sr+cy*cr, sy*sp*cr-cy*sr,
+                -sp, cp*sr, cp*cr]
+    return {'mapping.extrinsic_T': translation, 'mapping.extrinsic_R': rotation}
+
+
+def _spawn_robot_then_point_lio(context, physical_model):
     side = LaunchConfiguration('side').perform(context)
     start_box = LaunchConfiguration('start_box').perform(context)
     geometry_path = LaunchConfiguration('field_geometry_path').perform(context)
@@ -89,7 +110,7 @@ def _spawn_robot_then_point_lio(context):
         executable='spawn_entity.py',
         output='screen',
         arguments=[
-            '-topic', 'robot_description',
+            '-file', physical_model,
             '-entity', 'rc2027_br',
             '-x', str(x), '-y', str(y),
             # Start Zone 网格在 z≈0.025，轮子底面在 base_footprint 的 z=0。
@@ -106,6 +127,7 @@ def _spawn_robot_then_point_lio(context):
             get_package_share_directory('rc2027_sim_bridge'),
             'config', 'point_lio_mid360_sim.yaml'),
         {'use_sim_time': True},
+        _lidar_extrinsics(context),
     ]
     # 裁剪框开着时 Point-LIO 吃裁过的点云（cloud_crop 去掉车体 + 货仓里的点，2026-10-05）
     if LaunchConfiguration('cloud_crop').perform(context).lower() == 'true':
@@ -136,7 +158,11 @@ def generate_launch_description():
 
     sim_urdf = os.path.join(sim_share, 'urdf', 'rc2027_robot_sim.urdf.xacro')
 
+    model_dir = TemporaryDirectory(prefix='rc2027-gazebo-')
+    physical_model = os.path.join(model_dir.name, 'robot.urdf')
+
     return LaunchDescription([
+        RegisterEventHandler(OnShutdown(on_shutdown=lambda *_: model_dir.cleanup())),
         # 死进程留在 /dev/shm 里的 fastrtps 锁会让每个节点刷 open_and_lock_file failed
         SetEnvironmentVariable(
             'FASTRTPS_DEFAULT_PROFILES_FILE',
@@ -162,7 +188,7 @@ def generate_launch_description():
         DeclareLaunchArgument('rviz', default_value='true', description='是否开 RViz'),
         DeclareLaunchArgument(
             'localization', default_value='true',
-            description='是否起定位链路（lio_to_base + field_localizer）'),
+            description='是否起场地定位（field_localizer）'),
         DeclareLaunchArgument(
             'navigation', default_value='true',
             description='是否起点到点导航 point_navigator（需要定位链路）'),
@@ -205,16 +231,17 @@ def generate_launch_description():
                 os.path.join(bringup_share, 'launch', 'display.launch.py')),
             launch_arguments={
                 'urdf_file': sim_urdf,
+                'gazebo_urdf_path': physical_model,
                 'use_jsp': 'false',
                 'use_rviz': 'false',
                 'use_sim_time': 'true',
                 'xacro_overrides': [
-                    LaunchConfiguration('xacro_overrides'), ' sim_replay:=',
+                    LaunchConfiguration('xacro_overrides'), ' use_lidar_imu_link:=false sim_replay:=',
                     LaunchConfiguration('replay'), ' sim_cargo:=', LaunchConfiguration('sim_cargo')],
             }.items(),
         ),
 
-        OpaqueFunction(function=_spawn_robot_then_point_lio),
+        OpaqueFunction(function=_spawn_robot_then_point_lio, args=[physical_model]),
 
         Node(
             package='rc2027_perception',
@@ -237,8 +264,7 @@ def generate_launch_description():
                 'start_box': LaunchConfiguration('start_box'),
                 'start_zone': LaunchConfiguration('start_zone'),
                 'field_geometry_path': LaunchConfiguration('field_geometry_path'),
-                # 仿真里雷达和 IMU 挂在同一个 link（livox_sim）上
-                'body_frame': 'livox_sim',
+                'motion_icp_probe': 'true',
                 'z_check_offset': '0.05',
                 'use_sim_time': 'true',
                 'prior_map_path': LaunchConfiguration('prior_map_path'),

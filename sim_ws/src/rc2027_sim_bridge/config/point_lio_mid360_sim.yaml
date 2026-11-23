@@ -1,39 +1,4 @@
-# Point-LIO 配置——仿真专用。算法没换，还是 external_ws 里同一个 Point-LIO，
-# 只是给它喂一份仿真用的参数。
-#
-# 底稿：external_ws/src/point_lio/config/mid360_inner.yaml（Mid-360 内置 IMU，
-# 跟我们 BR 的真实用法、10-02 手持建图用的是同一份）。2026-10-03 第一版误用了
-# mid360_outer（华工外置 IMU 的配置）当底稿，助教逐项 diff 后指出，已改正。
-# **底稿没有被修改**，这是独立的新文件。
-#
-# 跟 mid360_inner.yaml 相比改了五处（逐项 diff 过，没有别的差异）：
-#
-#   1. mapping.acc_norm: 1.0 -> 9.81
-#      真实 Livox IMU 加速度单位是 g；Gazebo 的 libgazebo_ros_imu_sensor.so
-#      输出 m/s²。不改的话重力估计错误，初始化完立刻漂飞。
-#   2. mapping.extrinsic_T: [-0.011, -0.02329, 0.04412] -> [0, 0, 0]
-#      inner 里这个是 Mid-360 内置 IMU 相对激光中心的出厂偏移。仿真里 IMU
-#      传感器和雷达传感器挂在同一个 link（rc2027_sim_bridge/urdf 里的
-#      livox_sim）上，偏移就是 0。extrinsic_R 本来就是单位阵，没改。
-#   3. publish.tf_send_en: True -> False
-#      Point-LIO 发的 TF 是 lidar_odom -> lidar_link，而 URDF 里也有
-#      base_link -> lidar_link（robot_state_publisher 发），lidar_link 会有
-#      两个父节点。TF 链改由 rc2027_navigation 的 lio_to_base 发（0003 决定 8），
-#      真车也一样要关。
-#   4. mapping.satu_acc: 3.0 -> 29.4（2026-10-04 加，助教查到的）
-#      Estimator.cpp 的饱和检查拿的是**还没除以 acc_norm 的原始加速度**跟
-#      satu_acc 比，所以 satu_acc 跟 IMU 单位有关（底稿注释说"not related to
-#      the units"是错的）。真机单位 g，3.0 = 3 g；仿真单位 m/s²，不改的话 z 轴
-#      重力 9.81 每一帧都 >= 2.97 被判"饱和"清零，重力约束全丢，快速运动就发散。
-#      29.4 = 3 g × 9.81，跟真机同一个物理阈值。satu_gyro 两边都是 rad/s，不用改。
-#   5. publish.path_en: True -> False（2026-10-04）
-#      laserMapping.cpp 每一帧都把位姿 append 进 path、再把整条历史重发一遍，消息越来越大，
-#      跑久了 RViz 卡死（源码里自己有一行被注释掉的 "if path is too large, the rvis will
-#      crash"，助教查到的）。仿真 RViz 配置也不再显示它。真车上同样建议关
-#
-# imu_topic: livox/imu、time_diff_lidar_to_imu: 0.0 这两项 inner 底稿里本来
-# 就是这样，不算改动（第一版用 outer 当底稿时这两项也被改了，现在不需要了）。
-
+# Gazebo 底盘 IMU，200 Hz，m/s²。sim_mapping 从 lidar_joint 的安装参数传入外参。
 /**:
     ros__parameters:
         use_imu_as_input: false                             # Change to True to use IMU as input of Point-LIO
@@ -49,7 +14,7 @@
 
         common:
             lid_topic: "livox/lidar"
-            imu_topic: "livox/imu"
+            imu_topic: "imu/data"
             con_frame: False                                # True: if you need to combine several LiDAR frames into one
             con_frame_num: 1                                # the number of frames combined
             cut_frame: False                                # True: if you need to cut one LiDAR frame into several subframes
@@ -84,11 +49,6 @@
             ivox_grid_resolution: 2.0
             gravity: [ 0.0, 0.0, -9.810 ]                   # [0.0, 9.810, 0.0] # gravity to be aligned
             gravity_init: [ 0.0, 0.0, -9.810 ]              # [0.0, 9.810, 0.0] # # preknown gravity in the first IMU body frame, use when imu_en is False or start from a non-stationary state
-            extrinsic_T: [ 0.0, 0.0, 0.0 ]                  # 【仿真改动 2】IMU 和雷达挂在同一个仿真 link 上
-            extrinsic_R: [ 1.0, 0.0, 0.0,
-                           0.0, 1.0, 0.0,
-                           0.0, 0.0, 1.0 ]
-
         odometry:
             publish_odometry_without_downsample: True
 
@@ -96,7 +56,7 @@
             path_en: False                                  # 【仿真改动 5】无限增长，见文件头
             scan_publish_en: True                           # False: close all the point cloud output
             scan_bodyframe_pub_en: False                    # True: output the point cloud scans in IMU-body-frame
-            tf_send_en: False                               # 【仿真改动 3】避免 lidar_link 两个父节点，见文件头
+            tf_send_en: True                               # lidar_odom -> imu_link
 
         pcd_save:
             pcd_save_en: False                              # 这个没有用
