@@ -14,6 +14,8 @@
 
 ## 2. 系统数据链
 
+定位、配准和运行时 TF 见[定位与点云配准](LOCALIZATION.md)。方块检测见[雷达方块识别](BLOCK_DETECTION.md)。
+
 - 真雷达：`livox_ros_driver2` 发布 `livox_ros_driver2/msg/CustomMsg` 点云和 IMU；仿真由 Livox/Gazebo 插件提供对应输入。
 - Point-LIO 融合点云与 IMU，输出 `/aft_mapped_to_init`（`nav_msgs/msg/Odometry`）、`/cloud_registered` 等。
 - Point-LIO 发布 `lidar_odom → imu_link`，URDF 发布 `imu_link → base_link` 以及底盘下的车脚和传感器外参。
