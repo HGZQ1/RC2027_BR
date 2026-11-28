@@ -12,8 +12,7 @@
 **/__pycache__/
 **/*.pyc
 
-# 仿真场地的大体积 mesh（克隆自外部仓库时再决定是否作为 submodule 纳管）
-sim_ws/src/rc2027_field_assets/meshes/
+# Gazebo 上游 STL 由 sync_field_meshes.py 从源仓库获取。
 sim_ws/src/robocon_2027_gazebo/**/meshes/
 sim_ws/src/robocon_2027_gazebo/**/visuals_fixed/
 

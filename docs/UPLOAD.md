@@ -34,7 +34,7 @@ docker/docker_deps/whl/40/          # 默认 COPY 源，开启 PyTorch 时提供
 
 PyTorch 默认关闭，wheel目录仍参与COPY。上述目录通过依赖包补齐，或直接使用已构建的开发镜像。
 
-仿真场地部分 mesh 被 Git/Docker 忽略规则排除，随仿真资源包提供。来源为 `heartpain-kong/rc2027_field` 和 `YaoZA233/ABU-Robocon-2027-Gazebo`。保留资源来源与许可证，Gazebo场地包的再分发授权待确认。
+MuJoCo 场地与道具 OBJ 随仓库提供，保留 heartpain-kong/rc2027_field 的 MIT 许可证。Gazebo 场地 STL 使用 YaoZA233/ABU-Robocon-2027-Gazebo 的固定版本，由 `sim_ws/src/robocon_2027_gazebo/sync_field_meshes.py` 补齐。原生启动和离线导入见[仿真说明](../sim_ws/src/rc2027_sim_bridge/README.md#原生-ros-2-环境)。
 
 ## 交付检查
 

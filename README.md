@@ -84,6 +84,8 @@ colcon build --symlink-install
 source /workspace/sim_ws/install/setup.bash
 ```
 
+仿真场地网格和原生 ROS 2 启动说明见[仿真包 README](sim_ws/src/rc2027_sim_bridge/README.md#原生-ros-2-环境)。
+
 单独启动定位导航仿真：
 
 ```bash

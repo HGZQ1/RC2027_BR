@@ -29,6 +29,22 @@ source install/setup.bash
 ros2 launch rc2027_sim_bridge sim_mapping.launch.py          # 红方 BR 位置（box_b）
 ```
 
+### 原生 ROS 2 环境
+
+在仓库根目录执行以下命令。先加载本机已编译的 ROS Humble、Livox/Point-LIO 和项目包环境，再编译仿真工作区。车体、底盘和传感器由仓库里的 xacro 生成。MuJoCo 场地和道具网格随 Git 检出。Gazebo 使用原版场地 STL，首次可从上游补齐。已有网格时脚本直接核对并退出。
+
+```bash
+export RC2027_ROOT="$PWD"
+python3 "$RC2027_ROOT/sim_ws/src/robocon_2027_gazebo/sync_field_meshes.py"
+cd "$RC2027_ROOT/sim_ws"
+colcon build --symlink-install
+source install/setup.bash
+ros2 launch rc2027_sim_bridge sim_mapping.launch.py start_zone:=l1 \
+  field_geometry_path:="$RC2027_ROOT/docs/rules/field_geometry.yaml"
+```
+
+离线时可把上游 `YaoZA233/ABU-Robocon-2027-Gazebo` 的 `4be62dd` 版 tar.gz 带到目标机，传给脚本的 `--archive`。如果已经编译过仿真包，请重新安装 `robocon_2027_gazebo`，这样 Gazebo 能从包的 share 目录读到补齐的 STL。
+
 另开终端开车：
 
 ```bash
